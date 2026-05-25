@@ -1,0 +1,12 @@
+# Home Assistant REST Commands – n8n Webhook Integration
+# Einfügen in configuration.yaml:
+#   rest_command: !include ha-config/rest_commands.yaml
+
+rest_command:
+  n8n_battery_override:
+    url: "https://n8n.local/webhook/battery-ai-override"
+    method: POST
+    headers:
+      Content-Type: application/json
+    payload: '{"event": "{{ event }}"}'
+    # Ersetze n8n.local mit deiner n8n-URL/IP

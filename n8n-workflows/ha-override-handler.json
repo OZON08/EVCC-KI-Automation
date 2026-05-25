@@ -1,0 +1,125 @@
+{
+  "name": "Battery AI – HA Override Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "battery-ai-override",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook: HA Override",
+      "type": "n8n-nodes-base.webhook",
+      "position": [240, 300],
+      "webhookId": "battery-ai-override",
+      "notes": "URL: https://n8n.local/webhook/battery-ai-override\nHA sendet: { event: 'ai_control_disabled' | 'ai_control_enabled' | 'discharge_enabled' | 'discharge_disabled' }"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "value": "ai_control_disabled"
+            },
+            {
+              "value": "ai_control_enabled"
+            },
+            {
+              "value": "discharge_enabled"
+            },
+            {
+              "value": "discharge_disabled"
+            }
+          ]
+        },
+        "fallbackOutput": "none"
+      },
+      "id": "switch-event",
+      "name": "Event-Typ?",
+      "type": "n8n-nodes-base.switch",
+      "position": [460, 300],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "http://evcc.local:7070/api/batterygridchargelimit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "cookieAuth",
+        "options": {}
+      },
+      "id": "disable-charging",
+      "name": "evcc: Netzladen aus",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [700, 100],
+      "notes": "KI deaktiviert → sofort Netzladen stoppen"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://n8n.local/api/v1/workflows/DAILY-OPTIMIZER-ID/execute",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "={{ $credentials.n8nApiKey }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "trigger-optimizer",
+      "name": "Daily Optimizer sofort ausführen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [700, 220],
+      "notes": "DAILY-OPTIMIZER-ID muss mit echter Workflow-ID ersetzt werden"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evcc.local:7070/api/batterydischargecontrol/true",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "cookieAuth",
+        "options": {}
+      },
+      "id": "enable-discharge",
+      "name": "evcc: Entladen aktivieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [700, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evcc.local:7070/api/batterydischargecontrol/false",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "cookieAuth",
+        "options": {}
+      },
+      "id": "disable-discharge",
+      "name": "evcc: Entladen deaktivieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [700, 460]
+    }
+  ],
+  "connections": {
+    "Webhook: HA Override": {
+      "main": [[{ "node": "Event-Typ?", "type": "main", "index": 0 }]]
+    },
+    "Event-Typ?": {
+      "main": [
+        [{ "node": "evcc: Netzladen aus", "type": "main", "index": 0 }],
+        [{ "node": "Daily Optimizer sofort ausführen", "type": "main", "index": 0 }],
+        [{ "node": "evcc: Entladen aktivieren", "type": "main", "index": 0 }],
+        [{ "node": "evcc: Entladen deaktivieren", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "Reagiert auf HA-Schalter-Events via Webhook. Sofortige evcc-Steuerung ohne AI-Overhead.",
+    "version": "1.0.0"
+  }
+}

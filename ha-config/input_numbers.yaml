@@ -1,0 +1,13 @@
+# Home Assistant Input Numbers – KI-Batteriesteuerung
+# 0 = KI übernimmt, >0 = manueller Schwellwert in ct/kWh
+
+input_number:
+  manueller_preisschwellwert:
+    name: "Manueller Preisschwellwert"
+    icon: mdi:currency-eur
+    unit_of_measurement: "ct/kWh"
+    min: 0
+    max: 50
+    step: 0.1
+    initial: 0
+    mode: slider

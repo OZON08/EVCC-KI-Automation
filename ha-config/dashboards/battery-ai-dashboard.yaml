@@ -1,0 +1,74 @@
+# Home Assistant Lovelace Dashboard – KI-Batteriesteuerung
+# Als neue Dashboard-Datei einbinden oder in bestehende ui-lovelace.yaml einfügen
+
+title: Batterie KI
+views:
+  - title: Übersicht
+    path: battery-ai
+    icon: mdi:battery-charging
+    cards:
+      - type: vertical-stack
+        cards:
+          # Status-Header
+          - type: markdown
+            content: >
+              ## 🔋 KI-Batteriesteuerung
+              {% if is_state('input_boolean.ki_batteriesteuerung_aktiv', 'on') %}
+              **Status:** 🟢 Aktiv
+              {% else %}
+              **Status:** 🔴 Deaktiviert
+              {% endif %}
+
+          # Batterie SoC (via evcc in HA)
+          - type: gauge
+            entity: sensor.evcc_battery_soc
+            name: "Batterie SoC"
+            min: 0
+            max: 100
+            severity:
+              green: 40
+              yellow: 20
+              red: 0
+            needle: true
+
+          # KI-Entscheidung
+          - type: entities
+            title: "Aktuelle KI-Entscheidung"
+            entities:
+              - entity: sensor.battery_charge_threshold
+                name: "Preisschwellwert"
+                icon: mdi:currency-eur
+              - type: attribute
+                entity: sensor.battery_charge_threshold
+                attribute: reasoning
+                name: "Begründung (Claude)"
+                icon: mdi:brain
+              - entity: sensor.battery_charge_threshold
+                attribute: last_updated
+                name: "Letzte Berechnung"
+                icon: mdi:clock-outline
+
+          # Steuerung
+          - type: entities
+            title: "Steuerung"
+            entities:
+              - entity: input_boolean.ki_batteriesteuerung_aktiv
+                name: "KI-Steuerung"
+              - entity: input_boolean.einspeise_logik_aktiv
+                name: "Einspeise-Logik"
+              - entity: input_number.manueller_preisschwellwert
+                name: "Manueller Schwellwert (0 = KI)"
+
+          # Tibber-Preise (falls Tibber-Integration in HA vorhanden)
+          - type: custom:tibber-card
+            title: "Tibber Preise heute/morgen"
+            # Benötigt tibber-card custom component
+
+      - type: history-graph
+        title: "Verlauf (letzte 24h)"
+        entities:
+          - entity: sensor.battery_charge_threshold
+            name: "Schwellwert"
+          - entity: sensor.evcc_battery_soc
+            name: "SoC"
+        hours_to_show: 24

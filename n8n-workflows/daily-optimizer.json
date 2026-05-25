@@ -1,0 +1,209 @@
+{
+  "name": "Battery AI – Daily Optimizer",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 14 * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Trigger: täglich 14:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://evcc.local:7070/api/state",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "cookieAuth",
+        "options": {}
+      },
+      "id": "evcc-get-state",
+      "name": "evcc: GET /api/state",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 200],
+      "notes": "Liest aktuellen SoC, Tibber-Preise morgen, Solar-Prognose morgen"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://homeassistant.local:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "ha-check-switch",
+      "name": "HA: KI-Schalter prüfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 400],
+      "notes": "Abbrechen wenn KI-Steuerung deaktiviert"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.state }}",
+              "value2": "on"
+            }
+          ]
+        }
+      },
+      "id": "check-ki-active",
+      "name": "KI aktiv?",
+      "type": "n8n-nodes-base.if",
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "operation": "runQuery",
+        "query": "SELECT mean(\"value\") AS mean_kwh FROM \"gridPower\" WHERE time > now() - 28d AND weekday(time) = {{ new Date().getDay() }} GROUP BY time(1h) fill(0)",
+        "additionalFields": {}
+      },
+      "id": "influxdb-consumption",
+      "name": "InfluxDB: Verbrauchshistorie",
+      "type": "n8n-nodes-base.influxDb",
+      "position": [680, 200],
+      "notes": "Rolling avg letzter 28 Tage, gleicher Wochentag. Fallback: 10 kWh wenn Fehler."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Daten aus vorherigen Nodes zusammenführen\nconst evccState = $('evcc: GET /api/state').item.json;\nconst influxData = $('InfluxDB: Verbrauchshistorie').item.json;\n\n// evcc state auslesen\nconst soc = evccState?.battery?.soc ?? 50;\nconst solarForecastKwh = evccState?.forecast?.energy?.tomorrow ?? 0;\n\n// Tibber-Preise für morgen extrahieren\nconst tariff = evccState?.tariffGrid ?? [];\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst tomorrowStr = tomorrow.toISOString().split('T')[0];\nconst tomorrowPrices = tariff\n  .filter(slot => slot.start?.startsWith(tomorrowStr))\n  .map(slot => ({ time: slot.start, price_ct: slot.price * 100 }));\n\n// InfluxDB Verbrauch (Fallback: 10 kWh)\nlet avgConsumptionKwh = 10.0;\ntry {\n  const results = influxData?.results?.[0]?.series?.[0]?.values ?? [];\n  if (results.length > 0) {\n    const total = results.reduce((sum, row) => sum + (row[1] ?? 0), 0);\n    avgConsumptionKwh = Math.round(total / 1000 * 100) / 100; // Wh → kWh\n  }\n} catch (e) {\n  // Fallback bleibt 10 kWh\n}\n\n// Einspeise-Logik Status\nconst haDischarge = $('HA: Einspeise-Schalter').item.json?.state === 'on';\n\nreturn [{\n  json: {\n    soc,\n    solar_kwh: solarForecastKwh,\n    consumption_kwh: avgConsumptionKwh,\n    tibber_prices: tomorrowPrices,\n    discharge_active: haDischarge,\n    influx_fallback: avgConsumptionKwh === 10.0\n  }\n}];"
+      },
+      "id": "prepare-data",
+      "name": "Daten vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Aktueller SoC: {{ $json.soc }}%\nTibber-Preise morgen (ct/kWh, 15-min-Slots):\n{{ JSON.stringify($json.tibber_prices, null, 2) }}\nSolar-Prognose morgen: {{ $json.solar_kwh }} kWh\nDurchschnittlicher Tagesverbrauch (gleicher Wochentag{{ $json.influx_fallback ? ', FALLBACK-Wert' : '' }}): {{ $json.consumption_kwh }} kWh\nEinspeise-Logik aktiv: {{ $json.discharge_active ? 'ja' : 'nein' }}",
+        "options": {
+          "systemMessage": "Du bist ein Energieoptimierungs-Agent für eine Hausbatterie.\nSpecs: 7,6 kWh Kapazität, max. 7 kW Ladeleistung.\nEinspeisevergütung: 6,7 ct/kWh (fix, Entladen ins Netz lohnt kaum).\nZiel: Finde den optimalen Preisschwellwert (ct/kWh) für evcc's batterygridchargelimit.\nUnterhalb dieses Wertes lädt evcc die Batterie automatisch aus dem Netz.\n\nBerechne:\n1. Verfügbare Kapazität: (1 - SoC/100) * 7.6 kWh\n2. Energiebedarf: Verbrauch - Solar-Prognose - verfügbare Kapazität\n3. Wenn Bedarf <= 0: threshold_ct = 0 (kein Netzladen nötig)\n4. Sonst: Günstigste Preisslots wählen bis Bedarf gedeckt, threshold = max(gewählte Preise) * 1.05\n5. Wenn Einspeise-Logik aktiv: Berücksichtige ob Entladen bei sehr hohen Preisen sinnvoll\n\nGib IMMER ausschließlich valides JSON zurück:\n{ \"threshold_ct\": <Zahl mit 2 Dezimalstellen>, \"reasoning\": \"<kurze Begründung auf Deutsch>\" }"
+        }
+      },
+      "id": "claude-agent",
+      "name": "Claude Sonnet: Schwellwert berechnen",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "position": [1120, 300],
+      "notes": "Model: claude-sonnet-4-6. Entscheidet optimalen Preisschwellwert."
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.item.json;\n\n// Claude-Response parsen\nlet threshold = null;\nlet reasoning = '';\n\ntry {\n  // Versuche direktes JSON-Parsing\n  const text = response?.content ?? response?.text ?? JSON.stringify(response);\n  const match = text.match(/\\{[^}]+\\}/);\n  if (match) {\n    const parsed = JSON.parse(match[0]);\n    threshold = parseFloat(parsed.threshold_ct);\n    reasoning = parsed.reasoning ?? '';\n  }\n} catch (e) {\n  // Fallback: threshold bleibt null → Fehler-Node greift\n}\n\nif (threshold === null || isNaN(threshold)) {\n  throw new Error('Claude-Response konnte nicht geparst werden: ' + JSON.stringify(response));\n}\n\n// Sicherheitscheck: Threshold zwischen 0 und 50 ct\nthreshold = Math.min(50, Math.max(0, threshold));\n\nreturn [{\n  json: {\n    threshold_ct: threshold,\n    reasoning,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "parse-response",
+      "name": "Claude Response parsen",
+      "type": "n8n-nodes-base.code",
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://evcc.local:7070/api/batterygridchargelimit/{{ $json.threshold_ct }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "cookieAuth",
+        "options": {}
+      },
+      "id": "evcc-set-threshold",
+      "name": "evcc: Schwellwert setzen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://homeassistant.local:8123/api/states/sensor.battery_charge_threshold",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "state",
+              "value": "={{ $('parse-response').item.json.threshold_ct }}"
+            },
+            {
+              "name": "attributes",
+              "value": "={{ JSON.stringify({ reasoning: $('parse-response').item.json.reasoning, last_updated: $('parse-response').item.json.timestamp, unit_of_measurement: 'ct/kWh' }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ha-update-status",
+      "name": "HA: Status aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://homeassistant.local:8123/api/states/input_boolean.einspeise_logik_aktiv",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "ha-discharge-switch",
+      "name": "HA: Einspeise-Schalter",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 600]
+    }
+  ],
+  "connections": {
+    "Trigger: täglich 14:00": {
+      "main": [[
+        { "node": "evcc: GET /api/state", "type": "main", "index": 0 },
+        { "node": "HA: KI-Schalter prüfen", "type": "main", "index": 0 },
+        { "node": "InfluxDB: Verbrauchshistorie", "type": "main", "index": 0 },
+        { "node": "HA: Einspeise-Schalter", "type": "main", "index": 0 }
+      ]]
+    },
+    "HA: KI-Schalter prüfen": {
+      "main": [[{ "node": "KI aktiv?", "type": "main", "index": 0 }]]
+    },
+    "KI aktiv?": {
+      "main": [
+        [{ "node": "Daten vorbereiten", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "evcc: GET /api/state": {
+      "main": [[{ "node": "Daten vorbereiten", "type": "main", "index": 0 }]]
+    },
+    "InfluxDB: Verbrauchshistorie": {
+      "main": [[{ "node": "Daten vorbereiten", "type": "main", "index": 0 }]]
+    },
+    "HA: Einspeise-Schalter": {
+      "main": [[{ "node": "Daten vorbereiten", "type": "main", "index": 0 }]]
+    },
+    "Daten vorbereiten": {
+      "main": [[{ "node": "Claude Sonnet: Schwellwert berechnen", "type": "main", "index": 0 }]]
+    },
+    "Claude Sonnet: Schwellwert berechnen": {
+      "main": [[{ "node": "Claude Response parsen", "type": "main", "index": 0 }]]
+    },
+    "Claude Response parsen": {
+      "main": [[{ "node": "evcc: Schwellwert setzen", "type": "main", "index": 0 }]]
+    },
+    "evcc: Schwellwert setzen": {
+      "main": [[{ "node": "HA: Status aktualisieren", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "battery-ai-error-handler"
+  },
+  "meta": {
+    "description": "Täglicher KI-Optimizer: Claude Sonnet berechnet optimalen Tibber-Preisschwellwert für evcc batterygridchargelimit",
+    "version": "1.0.0"
+  }
+}

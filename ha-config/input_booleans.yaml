@@ -1,0 +1,13 @@
+# Home Assistant Input Booleans – KI-Batteriesteuerung
+# Einfügen in configuration.yaml oder als separate Datei via !include
+
+input_boolean:
+  ki_batteriesteuerung_aktiv:
+    name: "KI-Batteriesteuerung"
+    icon: mdi:robot
+    initial: true
+
+  einspeise_logik_aktiv:
+    name: "Einspeise-Logik"
+    icon: mdi:transmission-tower-export
+    initial: false

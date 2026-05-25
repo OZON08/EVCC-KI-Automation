@@ -1,0 +1,177 @@
+{
+  "name": "Battery AI – Safety Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "trigger-15min",
+      "name": "Trigger: alle 15 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://evcc.local:7070/api/state",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "cookieAuth",
+        "options": {}
+      },
+      "id": "evcc-get-state",
+      "name": "evcc: SoC lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://homeassistant.local:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "ha-check-switch",
+      "name": "HA: KI-Schalter Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [460, 460]
+    },
+    {
+      "parameters": {
+        "jsCode": "const evccState = $('evcc: SoC lesen').item.json;\nconst haSwitch = $('HA: KI-Schalter Status').item.json;\n\nconst soc = evccState?.battery?.soc ?? 50;\nconst kiActive = haSwitch?.state === 'on';\n\nreturn [{\n  json: {\n    soc,\n    ki_active: kiActive,\n    overcharge: soc > 95,\n    undercharge: soc < 10,\n    needs_action: !kiActive || soc > 95 || soc < 10\n  }\n}];"
+      },
+      "id": "evaluate-safety",
+      "name": "Safety-Check auswerten",
+      "type": "n8n-nodes-base.code",
+      "position": [680, 380]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.needs_action }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "needs-action",
+      "name": "Aktion nötig?",
+      "type": "n8n-nodes-base.if",
+      "position": [900, 380]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.overcharge || !$json.ki_active }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-disable-charging",
+      "name": "Netzladen deaktivieren?",
+      "type": "n8n-nodes-base.if",
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "http://evcc.local:7070/api/batterygridchargelimit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "cookieAuth",
+        "options": {}
+      },
+      "id": "evcc-disable-charging",
+      "name": "evcc: Netzladen deaktivieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1340, 200],
+      "notes": "Greift bei SoC > 95% oder KI deaktiviert"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.undercharge }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-disable-discharge",
+      "name": "Entladen deaktivieren?",
+      "type": "n8n-nodes-base.if",
+      "position": [1120, 460]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://evcc.local:7070/api/batterydischargecontrol/false",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "cookieAuth",
+        "options": {}
+      },
+      "id": "evcc-disable-discharge",
+      "name": "evcc: Entladen deaktivieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1340, 460],
+      "notes": "Greift bei SoC < 10%"
+    }
+  ],
+  "connections": {
+    "Trigger: alle 15 Minuten": {
+      "main": [[
+        { "node": "evcc: SoC lesen", "type": "main", "index": 0 },
+        { "node": "HA: KI-Schalter Status", "type": "main", "index": 0 }
+      ]]
+    },
+    "evcc: SoC lesen": {
+      "main": [[{ "node": "Safety-Check auswerten", "type": "main", "index": 0 }]]
+    },
+    "HA: KI-Schalter Status": {
+      "main": [[{ "node": "Safety-Check auswerten", "type": "main", "index": 0 }]]
+    },
+    "Safety-Check auswerten": {
+      "main": [[{ "node": "Aktion nötig?", "type": "main", "index": 0 }]]
+    },
+    "Aktion nötig?": {
+      "main": [
+        [
+          { "node": "Netzladen deaktivieren?", "type": "main", "index": 0 },
+          { "node": "Entladen deaktivieren?", "type": "main", "index": 0 }
+        ],
+        []
+      ]
+    },
+    "Netzladen deaktivieren?": {
+      "main": [
+        [{ "node": "evcc: Netzladen deaktivieren", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Entladen deaktivieren?": {
+      "main": [
+        [{ "node": "evcc: Entladen deaktivieren", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "Safety Monitor: läuft alle 15 min, rein regelbasiert. Kein AI. SoC-Grenzen: >95% Netzladen aus, <10% Entladen aus.",
+    "version": "1.0.0"
+  }
+}

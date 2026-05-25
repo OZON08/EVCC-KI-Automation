@@ -1,0 +1,47 @@
+# Home Assistant Automationen – KI-Batteriesteuerung Webhooks
+# Diese Automationen feuern Webhooks an n8n bei Schalter-Änderungen
+
+automation:
+  - id: battery_ai_control_disabled
+    alias: "Batterie KI: Steuerung deaktiviert → n8n benachrichtigen"
+    trigger:
+      - platform: state
+        entity_id: input_boolean.ki_batteriesteuerung_aktiv
+        to: "off"
+    action:
+      - service: rest_command.n8n_battery_override
+        data:
+          event: "ai_control_disabled"
+
+  - id: battery_ai_control_enabled
+    alias: "Batterie KI: Steuerung aktiviert → n8n benachrichtigen"
+    trigger:
+      - platform: state
+        entity_id: input_boolean.ki_batteriesteuerung_aktiv
+        to: "on"
+    action:
+      - service: rest_command.n8n_battery_override
+        data:
+          event: "ai_control_enabled"
+
+  - id: battery_ai_discharge_enabled
+    alias: "Batterie KI: Einspeise-Logik aktiviert → n8n benachrichtigen"
+    trigger:
+      - platform: state
+        entity_id: input_boolean.einspeise_logik_aktiv
+        to: "on"
+    action:
+      - service: rest_command.n8n_battery_override
+        data:
+          event: "discharge_enabled"
+
+  - id: battery_ai_discharge_disabled
+    alias: "Batterie KI: Einspeise-Logik deaktiviert → n8n benachrichtigen"
+    trigger:
+      - platform: state
+        entity_id: input_boolean.einspeise_logik_aktiv
+        to: "off"
+    action:
+      - service: rest_command.n8n_battery_override
+        data:
+          event: "discharge_disabled"
