@@ -21,15 +21,8 @@
       "parameters": {
         "method": "GET",
         "url": "http://ha.willeke.local:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "Bearer {{ $credentials.haToken }}"
-            }
-          ]
-        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "options": {}
       },
       "id": "ha-check-switch",
@@ -106,19 +99,8 @@
       "parameters": {
         "method": "POST",
         "url": "http://ha.willeke.local:8123/api/states/sensor.battery_charge_threshold",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "Bearer {{ $credentials.haToken }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "contentType": "json",
         "body": "={{ JSON.stringify({ state: $json.threshold_ct, attributes: { reasoning: $json.reasoning, last_updated: $json.timestamp, unit_of_measurement: 'ct/kWh', friendly_name: 'Batterie Preisschwellwert (KI)' } }) }}",
