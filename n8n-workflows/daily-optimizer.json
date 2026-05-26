@@ -62,9 +62,7 @@
     },
     {
       "parameters": {
-        "connectionType": "mcp",
-        "mcpServerUrl": "https://laden.willeke.local/mcp",
-        "toolFilter": "getState,getTariffInfo,setBatteryGridChargeLimit,removeBatteryGridChargeLimit,setBatteryDischargeControl"
+        "sseEndpoint": "https://laden.willeke.local/mcp"
       },
       "id": "evcc-mcp-tools",
       "name": "evcc MCP Tools",
