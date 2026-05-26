@@ -6,66 +6,89 @@ KI-gesteuertes System zur kostenoptimierten Ladung der Hausbatterie (RCT Power) 
 
 Täglich um 14:00 Uhr (sobald Tibber die Preise für den nächsten Tag veröffentlicht) läuft der Daily Optimizer in n8n:
 
-1. Liest aktuellen Batterie-SoC, Tibber-Preise (next 24h) und Solar-Prognose von evcc
-2. Liest historische Verbrauchsmuster aus InfluxDB (gleicher Wochentag, 28-Tage-Schnitt)
-3. Übergibt alle Daten an **Claude Sonnet** (AI Agent in n8n)
-4. Claude berechnet den optimalen Preisschwellwert und liefert eine Begründung
-5. n8n setzt `batterygridchargelimit` in evcc – evcc lädt automatisch, wenn Tibber < Schwellwert
+1. Prüft ob KI-Steuerung in Home Assistant aktiv ist
+2. **Claude Sonnet** liest via evcc MCP direkt: aktuellen SoC, Tibber-Preise (next 24h, 15-min-Raster), Solar-Prognose morgen
+3. Claude berechnet den optimalen Preisschwellwert und setzt ihn direkt in evcc
+4. evcc lädt die Batterie automatisch wann immer der Tibber-Preis unter dem Schwellwert liegt
+5. n8n schreibt Ergebnis + Begründung nach Home Assistant
+
+Zusätzlich läuft alle 15 Minuten ein Safety Monitor der SoC-Grenzen überwacht und Netzladen/Entladen bei Bedarf deaktiviert.
 
 ## Stack
 
-| Komponente | Rolle |
-|------------|-------|
-| **n8n** | Orchestrator: Datensammlung, Ausführung, Safety-Checks |
-| **Claude Sonnet** | KI-Entscheidungsmotor (n8n AI Agent Node) |
-| **evcc** | Batteriesteuerung via REST API |
-| **RCT Power** | Hausbatterie (7,6 kWh, ~7 kW) |
-| **Tibber** | Dynamische Strompreise (15-min-Raster, via evcc) |
-| **InfluxDB** | Verbrauchshistorie (von evcc befüllt) |
-| **Home Assistant** | Dashboard, Schalter, manuelle Overrides |
+| Komponente | Rolle | Adresse |
+|------------|-------|---------|
+| **n8n** | Orchestrator (läuft als HA-Addon) | `https://api-workflow.willeke.local` |
+| **Claude Sonnet** (`claude-sonnet-4-6`) | KI-Entscheidungsmotor via n8n AI Agent | Anthropic API |
+| **evcc** | Batteriesteuerung via REST API + MCP | `http://192.168.1.8:7070` |
+| **evcc MCP** | Tool-Interface für Claude (experimental) | `http://192.168.1.8:7070/mcp` |
+| **RCT Power** | Hausbatterie (7,6 kWh, ~7 kW) | via evcc |
+| **Tibber** | Dynamische Strompreise (15-min-Raster) | via evcc `forecast.grid` |
+| **InfluxDB** | Verbrauchshistorie | `http://a0d7b954-influxdb:8086/` db=`evcc` |
+| **Home Assistant** | Dashboard, Schalter, Overrides | `http://homeassistant:8123` (intern) |
+
+## Status
+
+| Workflow | Status | Trigger |
+|----------|--------|---------|
+| Daily Optimizer | ✅ Live | täglich 14:00 |
+| Safety Monitor | ✅ Live | alle 15 Minuten |
+| HA Override Handler | ⏳ Phase 3 | Webhook von HA |
 
 ## Projektstruktur
 
 ```
 ├── docs/
-│   └── superpowers/specs/       # Design-Specs
-├── n8n-workflows/               # n8n Workflow-Exporte (.json)
-│   ├── daily-optimizer.json
-│   ├── safety-monitor.json
-│   └── ha-override-handler.json
-├── ha-config/                   # Home Assistant YAML-Konfiguration
-│   ├── input_booleans.yaml
-│   ├── input_numbers.yaml
+│   ├── setup-phase1.md              # Setup-Anleitung
+│   └── superpowers/specs/
+│       └── 2026-05-25-battery-ai-design.md  # Design-Spec
+├── n8n-workflows/
+│   ├── daily-optimizer.json         # Claude + evcc MCP, täglich 14:00
+│   ├── safety-monitor.json          # Regelbasiert, alle 15 min
+│   └── ha-override-handler.json     # Webhook-Handler (Phase 3)
+├── ha-config/
+│   ├── input_booleans.yaml          # KI-Schalter, Einspeise-Schalter
+│   ├── input_numbers.yaml           # Manueller Schwellwert
+│   ├── rest_commands.yaml           # n8n Webhook-Aufruf
 │   ├── automations/
+│   │   └── battery-ai-webhooks.yaml # Schalter → n8n Webhooks
 │   └── dashboards/
-└── scripts/                     # Hilfsskripte (API-Tests etc.)
+│       └── battery-ai-dashboard.yaml
+└── scripts/
+    └── test-evcc-api.sh             # API-Test
 ```
 
-## Setup
+## Home Assistant Entities
 
-### Voraussetzungen
-- n8n mit Anthropic-Credential (Claude Sonnet API Key)
-- evcc erreichbar unter `http://evcc.local:7070`
-- InfluxDB mit evcc-Messdaten
-- Home Assistant mit Long-Lived Access Token
+| Entity | Typ | Funktion |
+|--------|-----|----------|
+| `input_boolean.ki_batteriesteuerung_aktiv` | Schalter | KI-Steuerung an/aus |
+| `input_boolean.einspeise_logik_aktiv` | Schalter | Einspeise-Logik (optional) |
+| `input_number.manueller_preisschwellwert` | Zahl | Override (0 = KI übernimmt) |
+| `sensor.battery_charge_threshold` | Sensor | Aktueller Schwellwert + Claude-Begründung |
 
-### Phase 1 – Grundgerüst
-Siehe [Setup-Anleitung](docs/setup-phase1.md)
+## Wichtige Erkenntnisse (Setup-Notizen)
 
-## Konfiguration
+- **evcc API**: offen ohne Auth im lokalen Netz
+- **evcc Tibber-Preise**: in `forecast.grid[]` (Wert in EUR → ×100 = ct), nicht `tariffGrid`
+- **evcc Solar-Prognose**: `forecast.solar.tomorrow.energy` (in Wh → ÷1000 = kWh)
+- **n8n als HA-Addon**: `.local` DNS nicht auflösbar im Container → `http://homeassistant:8123` verwenden
+- **n8n MCP Node**: `endpointUrl` Parameter wird beim JSON-Import nicht gesetzt → muss manuell eingetragen werden
+- **n8n Code-Node mit parallelen Inputs**: crasht mit `.item` → sequentiellen Flow und `.first()` verwenden
 
-| Variable | Beschreibung | Standard |
-|----------|-------------|---------|
-| evcc URL | evcc REST API Basis-URL | `http://evcc.local:7070` |
-| Batterie-Kapazität | kWh | `7.6` |
-| Max. Ladeleistung | kW | `7.0` |
-| Einspeisevergütung | ct/kWh | `6.7` |
-| Fallback-Verbrauch | kWh/Tag (wenn InfluxDB offline) | `10.0` |
+## Nächste Phasen
 
-## Sicherheit
+### Phase 2 – InfluxDB Lernkomponente
+Echter Verbrauch aus InfluxDB statt Fallback 10 kWh/Tag:
+- n8n InfluxDB-Credential: URL `http://a0d7b954-influxdb:8086/`, DB `evcc`, User `evcc`
+- Feldnamen verifizieren: `SHOW MEASUREMENTS` in InfluxDB
+- Claude bekommt rolling avg Verbrauch nach Wochentag/Stunde (28 Tage)
 
-- Safety Monitor läuft alle 15 Minuten – kein AI, reine Regellogik
-- SoC > 95%: Netzladen automatisch deaktiviert
-- SoC < 10%: Entladen automatisch deaktiviert
-- KI-Steuerung per HA-Schalter jederzeit deaktivierbar
-- Claude-Response nicht parsebar: letzter Schwellwert bleibt aktiv + HA-Notification
+### Phase 3 – HA Override Handler
+Sofortreaktion auf HA-Schalter-Änderungen:
+- HA `rest_commands.yaml` einbinden
+- Automationen aus `ha-config/automations/battery-ai-webhooks.yaml` einrichten
+- `ha-override-handler.json` in n8n importieren und publishen
+
+### Phase 4 – Einspeise-Logik (optional)
+Batterie aktiv entladen wenn Tibber-Preis hoch genug.
