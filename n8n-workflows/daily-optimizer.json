@@ -12,23 +12,36 @@
           ]
         }
       },
-      "id": "trigger-cron",
+      "id": "bb12d45a-d12d-4038-ad5a-3593f7fdd993",
       "name": "Trigger: täglich 14:00",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "position": [240, 300]
+      "position": [
+        0,
+        0
+      ],
+      "typeVersion": 1.3
     },
     {
       "parameters": {
-        "method": "GET",
         "url": "http://homeassistant:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {}
       },
-      "id": "ha-check-switch",
+      "id": "55d513a2-9f35-4a77-b1a6-36ac8394e8be",
       "name": "HA: KI-Schalter prüfen",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [460, 300]
+      "position": [
+        224,
+        0
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
     },
     {
       "parameters": {
@@ -39,12 +52,17 @@
               "value2": "on"
             }
           ]
-        }
+        },
+        "options": {}
       },
-      "id": "check-ki-active",
+      "id": "ba71d96e-486e-4668-84fe-e308489c0570",
       "name": "KI aktiv?",
       "type": "n8n-nodes-base.if",
-      "position": [680, 300]
+      "position": [
+        448,
+        0
+      ],
+      "typeVersion": 2.3
     },
     {
       "parameters": {
@@ -54,44 +72,71 @@
           "systemMessage": "Du bist ein Energieoptimierungs-Agent für eine Hausbatterie.\nSpecs: 7,6 kWh Kapazität, max. 7 kW Ladeleistung, Einspeisevergütung 6,7 ct/kWh.\nDu hast Zugriff auf evcc via MCP-Tools. Nutze sie um Daten zu lesen und Einstellungen zu setzen.\nWichtig: setBatteryGridChargeLimit erwartet den Wert in EUR/kWh (nicht ct). Beispiel: 10 ct = 0.10 EUR.\nGib am Ende IMMER valides JSON zurück: { \"threshold_ct\": <Zahl>, \"reasoning\": \"<Text>\" }"
         }
       },
-      "id": "claude-mcp-agent",
+      "id": "59068028-3e0c-45d6-ab7d-0c852d963425",
       "name": "Claude Sonnet + evcc MCP",
       "type": "@n8n/n8n-nodes-langchain.agent",
-      "position": [900, 300],
+      "position": [
+        672,
+        0
+      ],
+      "typeVersion": 3.1,
       "notes": "Claude hat direkten evcc-Zugriff via MCP. Liest State, analysiert Preise, setzt Schwellwert selbst."
     },
     {
       "parameters": {
-        "sseEndpoint": "https://laden.willeke.local/mcp"
+        "endpointUrl": "http://192.168.1.8:7070/mcp",
+        "options": {}
       },
-      "id": "evcc-mcp-tools",
+      "id": "3f366ad8-932f-48f0-a88e-d872f977f450",
       "name": "evcc MCP Tools",
       "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
-      "position": [900, 480],
+      "position": [
+        880,
+        224
+      ],
+      "typeVersion": 1.2,
       "notes": "Stellt evcc MCP-Tools für Claude bereit. Nur lesende + Batterie-Tools aktiviert."
     },
     {
       "parameters": {
-        "model": "claude-sonnet-4-6",
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-4-6",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 4.6"
+        },
         "options": {
-          "maxTokens": 1024,
           "temperature": 0
         }
       },
-      "id": "anthropic-model",
+      "id": "6151d5fd-d8c5-49e7-9558-e575911b2e03",
       "name": "Claude Sonnet 4.6",
       "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "position": [900, 580],
+      "position": [
+        672,
+        288
+      ],
+      "typeVersion": 1.3,
+      "credentials": {
+        "anthropicApi": {
+          "id": "zcVdqqwObP1JOxql",
+          "name": "Anthropic – Claude Sonnet"
+        }
+      },
       "notes": "Anthropic Credential muss gesetzt sein."
     },
     {
       "parameters": {
-        "jsCode": "const response = $input.item.json?.output ?? JSON.stringify($input.item.json);\n\nlet threshold = null;\nlet reasoning = 'Keine Begründung';\n\ntry {\n  // JSON aus Claude-Antwort extrahieren\n  const match = response.match(/\\{[\\s\\S]*?\"threshold_ct\"[\\s\\S]*?\\}/);\n  if (match) {\n    const parsed = JSON.parse(match[0]);\n    threshold = parseFloat(parsed.threshold_ct);\n    reasoning = parsed.reasoning ?? reasoning;\n  }\n} catch (e) {\n  // Fallback: Zahl direkt suchen\n  const numMatch = response.match(/threshold_ct[\":\\s]+(\\d+\\.?\\d*)/);\n  if (numMatch) threshold = parseFloat(numMatch[1]);\n}\n\nif (threshold === null || isNaN(threshold)) {\n  throw new Error('Claude-Response nicht parsebar: ' + String(response).slice(0, 300));\n}\n\nthreshold = Math.min(50, Math.max(0, threshold));\n\nreturn [{ json: { threshold_ct: threshold, reasoning, timestamp: new Date().toISOString(), raw: String(response).slice(0, 500) } }];"
+        "jsCode": "// Alle möglichen Pfade für die Claude-Antwort probieren\n  const item = $input.first() ?? $input.item;\n  const data = item?.json ?? {};\n\n  const response = data.output\n    ?? data.text\n    ?? data.message\n    ?? data.content\n    ?? JSON.stringify(data);\n\n  let threshold = null;\n  let reasoning = 'Keine Begründung';\n\n  // Versuche JSON-Block zu extrahieren\n  const jsonMatch = String(response).match(/\\{[\\s\\S]*?\"threshold_ct\"[\\s\\S]*?\\}/);\n  if (jsonMatch) {\n    try {\n      const parsed = JSON.parse(jsonMatch[0]);\n      threshold = parseFloat(parsed.threshold_ct);\n      reasoning = parsed.reasoning ?? reasoning;\n    } catch(e) {}\n  }\n\n  // Fallback: Zahl nach threshold_ct suchen\n  if (threshold === null) {\n    const numMatch = String(response).match(/threshold_ct[\"' ]*[:=][\"' ]*(\\d+\\.?\\d*)/);\n    if (numMatch) threshold = parseFloat(numMatch[1]);\n  }\n\n  // Wenn nichts gefunden: Debug-Info ausgeben statt crash\n  if (threshold === null || isNaN(threshold)) {\n    return [{ json: {\n      error: true,\n      debug_response: String(response).slice(0, 1000),\n      debug_keys: Object.keys(data).join(', ')\n    }}];\n  }\n\n  threshold = Math.min(50, Math.max(0, threshold));\n\n  return [{ json: {\n    threshold_ct: threshold,\n    reasoning,\n    timestamp: new Date().toISOString()\n  }}];"
       },
-      "id": "parse-response",
+      "id": "2256af74-630d-463a-b1a0-e7f3a310f9f9",
       "name": "Ergebnis extrahieren",
       "type": "n8n-nodes-base.code",
-      "position": [1120, 300]
+      "position": [
+        976,
+        0
+      ],
+      "typeVersion": 2
     },
     {
       "parameters": {
@@ -100,47 +145,116 @@
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
-        "contentType": "json",
-        "body": "={{ { \"state\": String($json.threshold_ct), \"attributes\": { \"unit_of_measurement\": \"ct/kWh\", \"friendly_name\": \"Batterie Preisschwellwert (KI)\", \"reasoning\": $json.reasoning, \"last_updated\": $json.timestamp } } }}",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"state\": String($json.threshold_ct), \"attributes\": { \"unit_of_measurement\": \"ct/kWh\", \"friendly_name\": \"Batterie Preisschwellwert (KI)\",\n  \"reasoning\": $json.reasoning, \"last_updated\": $json.timestamp } } }}",
         "options": {}
       },
-      "id": "ha-update-status",
+      "id": "b49dafb0-cc18-456c-9832-df897573635e",
       "name": "HA: Status aktualisieren",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [1340, 300]
+      "position": [
+        1088,
+        208
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
     }
   ],
+  "pinData": {},
   "connections": {
     "Trigger: täglich 14:00": {
-      "main": [[{ "node": "HA: KI-Schalter prüfen", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "HA: KI-Schalter prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "HA: KI-Schalter prüfen": {
-      "main": [[{ "node": "KI aktiv?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "KI aktiv?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "KI aktiv?": {
       "main": [
-        [{ "node": "Claude Sonnet + evcc MCP", "type": "main", "index": 0 }],
-        []
+        [
+          {
+            "node": "Claude Sonnet + evcc MCP",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Claude Sonnet + evcc MCP": {
-      "main": [[{ "node": "Ergebnis extrahieren", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Ergebnis extrahieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "evcc MCP Tools": {
-      "ai_tool": [[{ "node": "Claude Sonnet + evcc MCP", "type": "ai_tool", "index": 0 }]]
+      "ai_tool": [
+        [
+          {
+            "node": "Claude Sonnet + evcc MCP",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Claude Sonnet 4.6": {
-      "ai_languageModel": [[{ "node": "Claude Sonnet + evcc MCP", "type": "ai_languageModel", "index": 0 }]]
+      "ai_languageModel": [
+        [
+          {
+            "node": "Claude Sonnet + evcc MCP",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Ergebnis extrahieren": {
-      "main": [[{ "node": "HA: Status aktualisieren", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "HA: Status aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
+  "active": false,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "binaryMode": "separate"
   },
+  "versionId": "267aba43-d3ff-4516-ab8d-67713151c61d",
   "meta": {
-    "description": "Claude Sonnet nutzt evcc MCP direkt: liest State/Tarife, setzt batterygridchargelimit selbst. n8n orchestriert + HA-Update.",
-    "version": "2.0.0"
-  }
+    "templateCredsSetupCompleted": true,
+    "instanceId": "8097a91cfaba8dfdfe2acc47748dc7815a709bc5aa1d37f7c8283b95db2bc694"
+  },
+  "id": "e23UjhOHznLHFUKB",
+  "tags": []
 }
