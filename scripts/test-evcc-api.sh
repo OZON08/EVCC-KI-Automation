@@ -3,7 +3,7 @@
 # Verwendung: bash scripts/test-evcc-api.sh
 # Setzt voraus: evcc erreichbar unter http://evcc.local:7070
 
-EVCC_URL="http://evcc.local:7070"
+EVCC_URL="https://laden.willeke.local"
 EVCC_USER="admin"      # evcc Benutzername anpassen
 EVCC_PASS="password"   # evcc Passwort anpassen
 

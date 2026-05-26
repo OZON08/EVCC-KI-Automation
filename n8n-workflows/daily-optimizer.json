@@ -20,7 +20,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://evcc.local:7070/api/state",
+        "url": "https://laden.willeke.local/api/state",
         "authentication": "genericCredentialType",
         "genericAuthType": "cookieAuth",
         "options": {}
@@ -34,7 +34,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://homeassistant.local:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
+        "url": "http://ha.willeke.local:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {}
@@ -108,7 +108,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://evcc.local:7070/api/batterygridchargelimit/{{ $json.threshold_ct }}",
+        "url": "=https://laden.willeke.local/api/batterygridchargelimit/{{ $json.threshold_ct }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "cookieAuth",
         "options": {}
@@ -121,7 +121,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://homeassistant.local:8123/api/states/sensor.battery_charge_threshold",
+        "url": "http://ha.willeke.local:8123/api/states/sensor.battery_charge_threshold",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
@@ -147,7 +147,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://homeassistant.local:8123/api/states/input_boolean.einspeise_logik_aktiv",
+        "url": "http://ha.willeke.local:8123/api/states/input_boolean.einspeise_logik_aktiv",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {}

@@ -4,7 +4,7 @@
 
 rest_command:
   n8n_battery_override:
-    url: "https://n8n.local/webhook/battery-ai-override"
+    url: "https://api-workflow.willeke.local/webhook/battery-ai-override"
     method: POST
     headers:
       Content-Type: application/json

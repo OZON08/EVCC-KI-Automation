@@ -43,7 +43,7 @@
     {
       "parameters": {
         "method": "DELETE",
-        "url": "http://evcc.local:7070/api/batterygridchargelimit",
+        "url": "https://laden.willeke.local/api/batterygridchargelimit",
         "authentication": "genericCredentialType",
         "genericAuthType": "cookieAuth",
         "options": {}
@@ -57,7 +57,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://n8n.local/api/v1/workflows/DAILY-OPTIMIZER-ID/execute",
+        "url": "https://api-workflow.willeke.local/api/v1/workflows/DAILY-OPTIMIZER-ID/execute",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -78,7 +78,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://evcc.local:7070/api/batterydischargecontrol/true",
+        "url": "https://laden.willeke.local/api/batterydischargecontrol/true",
         "authentication": "genericCredentialType",
         "genericAuthType": "cookieAuth",
         "options": {}
@@ -91,7 +91,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://evcc.local:7070/api/batterydischargecontrol/false",
+        "url": "https://laden.willeke.local/api/batterydischargecontrol/false",
         "authentication": "genericCredentialType",
         "genericAuthType": "cookieAuth",
         "options": {}
