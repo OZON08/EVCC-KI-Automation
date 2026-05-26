@@ -44,7 +44,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const evccState = $('evcc: SoC lesen').item.json;\nconst haSwitch = $('HA: KI-Schalter Status').item.json;\n\nconst soc = evccState?.battery?.soc ?? 50;\nconst kiActive = haSwitch?.state === 'on';\n\nreturn [{\n  json: {\n    soc,\n    ki_active: kiActive,\n    overcharge: soc > 95,\n    undercharge: soc < 10,\n    needs_action: !kiActive || soc > 95 || soc < 10\n  }\n}];"
+        "jsCode": "const evccState = $('evcc: SoC lesen').first()?.json ?? {};\nconst haSwitch = $input.first()?.json ?? {};\n\nconst soc = evccState?.battery?.soc ?? 50;\nconst kiActive = haSwitch?.state === 'on';\n\nreturn [{\n  json: {\n    soc,\n    ki_active: kiActive,\n    overcharge: soc > 95,\n    undercharge: soc < 10,\n    needs_action: !kiActive || soc > 95 || soc < 10\n  }\n}];"
       },
       "id": "evaluate-safety",
       "name": "Safety-Check auswerten",
@@ -128,13 +128,10 @@
   ],
   "connections": {
     "Trigger: alle 15 Minuten": {
-      "main": [[
-        { "node": "evcc: SoC lesen", "type": "main", "index": 0 },
-        { "node": "HA: KI-Schalter Status", "type": "main", "index": 0 }
-      ]]
+      "main": [[{ "node": "evcc: SoC lesen", "type": "main", "index": 0 }]]
     },
     "evcc: SoC lesen": {
-      "main": [[{ "node": "Safety-Check auswerten", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "HA: KI-Schalter Status", "type": "main", "index": 0 }]]
     },
     "HA: KI-Schalter Status": {
       "main": [[{ "node": "Safety-Check auswerten", "type": "main", "index": 0 }]]
