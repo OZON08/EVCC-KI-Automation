@@ -12,33 +12,67 @@
       "type": "n8n-nodes-base.webhook",
       "position": [240, 300],
       "webhookId": "battery-ai-override",
-      "notes": "URL: https://n8n.local/webhook/battery-ai-override\nHA sendet: { event: 'ai_control_disabled' | 'ai_control_enabled' | 'discharge_enabled' | 'discharge_disabled' }"
+      "notes": "HA sendet POST mit Body: { \"event\": \"ai_control_disabled\" | \"ai_control_enabled\" | \"discharge_enabled\" | \"discharge_disabled\" }"
     },
     {
       "parameters": {
-        "rules": {
-          "rules": [
+        "jsCode": "const event = $input.item.json?.body?.event ?? $input.item.json?.event ?? '';\nreturn [{ json: { event } }];"
+      },
+      "id": "extract-event",
+      "name": "Event lesen",
+      "type": "n8n-nodes-base.code",
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
             {
-              "value": "ai_control_disabled"
-            },
-            {
-              "value": "ai_control_enabled"
-            },
-            {
-              "value": "discharge_enabled"
-            },
-            {
-              "value": "discharge_disabled"
+              "value1": "={{ $json.event }}",
+              "operation": "equals",
+              "value2": "ai_control_disabled"
             }
           ]
-        },
-        "fallbackOutput": "none"
+        }
       },
-      "id": "switch-event",
-      "name": "Event-Typ?",
-      "type": "n8n-nodes-base.switch",
-      "position": [460, 300],
-      "typeVersion": 3
+      "id": "if-disable",
+      "name": "KI deaktiviert?",
+      "type": "n8n-nodes-base.if",
+      "position": [680, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.event }}",
+              "operation": "equals",
+              "value2": "ai_control_enabled"
+            }
+          ]
+        }
+      },
+      "id": "if-enable",
+      "name": "KI aktiviert?",
+      "type": "n8n-nodes-base.if",
+      "position": [680, 340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.event }}",
+              "operation": "equals",
+              "value2": "discharge_enabled"
+            }
+          ]
+        }
+      },
+      "id": "if-discharge-on",
+      "name": "Einspeisen aktiviert?",
+      "type": "n8n-nodes-base.if",
+      "position": [680, 500]
     },
     {
       "parameters": {
@@ -47,32 +81,32 @@
         "authentication": "none",
         "options": {}
       },
-      "id": "disable-charging",
+      "id": "evcc-disable-charging",
       "name": "evcc: Netzladen aus",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [700, 100],
-      "notes": "KI deaktiviert → sofort Netzladen stoppen"
+      "position": [920, 120],
+      "notes": "KI deaktiviert: Netzladen sofort stoppen"
     },
     {
       "parameters": {
-        "method": "GET",
+        "method": "POST",
         "url": "https://api-workflow.willeke.local/api/v1/workflows/DAILY-OPTIMIZER-ID/execute",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "X-N8N-API-KEY",
-              "value": "={{ $credentials.n8nApiKey }}"
+              "value": "DEIN-N8N-API-KEY"
             }
           ]
         },
         "options": {}
       },
       "id": "trigger-optimizer",
-      "name": "Daily Optimizer sofort ausführen",
+      "name": "Daily Optimizer starten",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [700, 220],
-      "notes": "DAILY-OPTIMIZER-ID muss mit echter Workflow-ID ersetzt werden"
+      "position": [920, 280],
+      "notes": "DAILY-OPTIMIZER-ID und N8N-API-KEY nach Import ersetzen"
     },
     {
       "parameters": {
@@ -81,10 +115,10 @@
         "authentication": "none",
         "options": {}
       },
-      "id": "enable-discharge",
+      "id": "evcc-discharge-on",
       "name": "evcc: Entladen aktivieren",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [700, 340]
+      "position": [920, 440]
     },
     {
       "parameters": {
@@ -93,20 +127,37 @@
         "authentication": "none",
         "options": {}
       },
-      "id": "disable-discharge",
+      "id": "evcc-discharge-off",
       "name": "evcc: Entladen deaktivieren",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [700, 460]
+      "position": [920, 580]
     }
   ],
   "connections": {
     "Webhook: HA Override": {
-      "main": [[{ "node": "Event-Typ?", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Event lesen", "type": "main", "index": 0 }]]
     },
-    "Event-Typ?": {
+    "Event lesen": {
+      "main": [[
+        { "node": "KI deaktiviert?", "type": "main", "index": 0 },
+        { "node": "KI aktiviert?", "type": "main", "index": 0 },
+        { "node": "Einspeisen aktiviert?", "type": "main", "index": 0 }
+      ]]
+    },
+    "KI deaktiviert?": {
       "main": [
         [{ "node": "evcc: Netzladen aus", "type": "main", "index": 0 }],
-        [{ "node": "Daily Optimizer sofort ausführen", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "KI aktiviert?": {
+      "main": [
+        [{ "node": "Daily Optimizer starten", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Einspeisen aktiviert?": {
+      "main": [
         [{ "node": "evcc: Entladen aktivieren", "type": "main", "index": 0 }],
         [{ "node": "evcc: Entladen deaktivieren", "type": "main", "index": 0 }]
       ]
@@ -116,7 +167,7 @@
     "executionOrder": "v1"
   },
   "meta": {
-    "description": "Reagiert auf HA-Schalter-Events via Webhook. Sofortige evcc-Steuerung ohne AI-Overhead.",
-    "version": "1.0.0"
+    "description": "Reagiert auf HA-Schalter-Events via Webhook. IF-Nodes statt Switch fuer maximale Kompatibilitaet.",
+    "version": "2.0.0"
   }
 }
