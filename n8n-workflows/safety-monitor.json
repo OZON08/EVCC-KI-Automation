@@ -32,7 +32,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://ha.willeke.local:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
+        "url": "http://homeassistant:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {}

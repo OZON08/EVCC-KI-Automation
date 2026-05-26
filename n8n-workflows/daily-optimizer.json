@@ -20,7 +20,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://ha.willeke.local:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
+        "url": "http://homeassistant:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {}
@@ -96,7 +96,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://ha.willeke.local:8123/api/states/sensor.battery_charge_threshold",
+        "url": "http://homeassistant:8123/api/states/sensor.battery_charge_threshold",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
