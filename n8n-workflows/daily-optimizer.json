@@ -21,8 +21,7 @@
       "parameters": {
         "method": "GET",
         "url": "https://laden.willeke.local/api/state",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "cookieAuth",
+        "authentication": "none",
         "options": {}
       },
       "id": "evcc-get-state",
@@ -75,7 +74,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Daten aus vorherigen Nodes zusammenführen\nconst evccState = $('evcc: GET /api/state').item.json;\nconst influxData = $('InfluxDB: Verbrauchshistorie').item.json;\n\n// evcc state auslesen\nconst soc = evccState?.battery?.soc ?? 50;\nconst solarForecastKwh = evccState?.forecast?.energy?.tomorrow ?? 0;\n\n// Tibber-Preise für morgen extrahieren\nconst tariff = evccState?.tariffGrid ?? [];\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst tomorrowStr = tomorrow.toISOString().split('T')[0];\nconst tomorrowPrices = tariff\n  .filter(slot => slot.start?.startsWith(tomorrowStr))\n  .map(slot => ({ time: slot.start, price_ct: slot.price * 100 }));\n\n// InfluxDB Verbrauch (Fallback: 10 kWh)\nlet avgConsumptionKwh = 10.0;\ntry {\n  const results = influxData?.results?.[0]?.series?.[0]?.values ?? [];\n  if (results.length > 0) {\n    const total = results.reduce((sum, row) => sum + (row[1] ?? 0), 0);\n    avgConsumptionKwh = Math.round(total / 1000 * 100) / 100; // Wh → kWh\n  }\n} catch (e) {\n  // Fallback bleibt 10 kWh\n}\n\n// Einspeise-Logik Status\nconst haDischarge = $('HA: Einspeise-Schalter').item.json?.state === 'on';\n\nreturn [{\n  json: {\n    soc,\n    solar_kwh: solarForecastKwh,\n    consumption_kwh: avgConsumptionKwh,\n    tibber_prices: tomorrowPrices,\n    discharge_active: haDischarge,\n    influx_fallback: avgConsumptionKwh === 10.0\n  }\n}];"
+        "jsCode": "// Daten aus vorherigen Nodes zusammenführen\nconst evccState = $('evcc: GET /api/state').item.json;\nconst influxData = $('InfluxDB: Verbrauchshistorie').item.json;\n\n// evcc state auslesen\nconst soc = Math.round(evccState?.battery?.soc ?? 50);\n\n// Solar-Prognose morgen: forecast.solar.tomorrow.energy in Wh → kWh\nconst solarForecastKwh = Math.round((evccState?.forecast?.solar?.tomorrow?.energy ?? 0) / 1000 * 10) / 10;\n\n// Tibber-Preise für morgen: forecast.grid enthält heute+morgen als 15-min-Slots\n// Wert ist in EUR → mal 100 = ct/kWh\nconst allSlots = evccState?.forecast?.grid ?? [];\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst tomorrowStr = tomorrow.toISOString().split('T')[0];\nconst tomorrowPrices = allSlots\n  .filter(slot => slot.start?.startsWith(tomorrowStr))\n  .map(slot => ({ time: slot.start, price_ct: Math.round(slot.value * 100 * 100) / 100 }));\n\n// InfluxDB Verbrauch (Fallback: 10 kWh wenn nicht verfügbar)\nlet avgConsumptionKwh = 10.0;\nlet influxFallback = true;\ntry {\n  const results = influxData?.results?.[0]?.series?.[0]?.values ?? [];\n  if (results.length > 0) {\n    const validValues = results.map(r => r[1]).filter(v => v != null && !isNaN(v));\n    if (validValues.length > 0) {\n      const total = validValues.reduce((sum, v) => sum + v, 0);\n      avgConsumptionKwh = Math.round(total / 1000 * 100) / 100; // Wh → kWh\n      influxFallback = false;\n    }\n  }\n} catch (e) {\n  // Fallback bleibt 10 kWh\n}\n\n// Einspeise-Logik Status\nconst haDischarge = $('HA: Einspeise-Schalter').item.json?.state === 'on';\n\n// Abbruch wenn keine Tibber-Preise für morgen verfügbar\nif (tomorrowPrices.length === 0) {\n  throw new Error('Keine Tibber-Preise fuer morgen verfuegbar – Optimizer abgebrochen');\n}\n\nreturn [{\n  json: {\n    soc,\n    solar_kwh: solarForecastKwh,\n    consumption_kwh: avgConsumptionKwh,\n    tibber_prices: tomorrowPrices,\n    discharge_active: haDischarge,\n    influx_fallback: influxFallback\n  }\n}];"
       },
       "id": "prepare-data",
       "name": "Daten vorbereiten",
@@ -109,8 +108,7 @@
       "parameters": {
         "method": "POST",
         "url": "=https://laden.willeke.local/api/batterygridchargelimit/{{ $json.threshold_ct }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "cookieAuth",
+        "authentication": "none",
         "options": {}
       },
       "id": "evcc-set-threshold",

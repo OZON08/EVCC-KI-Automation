@@ -21,8 +21,7 @@
       "parameters": {
         "method": "GET",
         "url": "https://laden.willeke.local/api/state",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "cookieAuth",
+        "authentication": "none",
         "options": {}
       },
       "id": "evcc-get-state",
@@ -88,8 +87,7 @@
       "parameters": {
         "method": "DELETE",
         "url": "https://laden.willeke.local/api/batterygridchargelimit",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "cookieAuth",
+        "authentication": "none",
         "options": {}
       },
       "id": "evcc-disable-charging",
@@ -118,8 +116,7 @@
       "parameters": {
         "method": "POST",
         "url": "https://laden.willeke.local/api/batterydischargecontrol/false",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "cookieAuth",
+        "authentication": "none",
         "options": {}
       },
       "id": "evcc-disable-discharge",
