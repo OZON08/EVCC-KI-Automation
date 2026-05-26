@@ -101,7 +101,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "contentType": "json",
-        "body": "={{ JSON.stringify({ state: $json.threshold_ct, attributes: { reasoning: $json.reasoning, last_updated: $json.timestamp, unit_of_measurement: 'ct/kWh', friendly_name: 'Batterie Preisschwellwert (KI)' } }) }}",
+        "body": "={{ { \"state\": String($json.threshold_ct), \"attributes\": { \"unit_of_measurement\": \"ct/kWh\", \"friendly_name\": \"Batterie Preisschwellwert (KI)\", \"reasoning\": $json.reasoning, \"last_updated\": $json.timestamp } } }}",
         "options": {}
       },
       "id": "ha-update-status",
