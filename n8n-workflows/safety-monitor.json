@@ -12,44 +12,63 @@
           ]
         }
       },
-      "id": "trigger-15min",
+      "id": "a40a86c6-c921-49ba-98a5-27118b74485c",
       "name": "Trigger: alle 15 Minuten",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "position": [240, 300]
+      "position": [
+        -1104,
+        112
+      ],
+      "typeVersion": 1.3
     },
     {
       "parameters": {
-        "method": "GET",
         "url": "http://192.168.1.8:7070/api/state",
-        "authentication": "none",
         "options": {}
       },
-      "id": "evcc-get-state",
+      "id": "be5a191c-2246-4445-ae56-caf318795b23",
       "name": "evcc: SoC lesen",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [460, 300]
+      "position": [
+        -944,
+        64
+      ],
+      "typeVersion": 4.4
     },
     {
       "parameters": {
-        "method": "GET",
         "url": "http://homeassistant:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "options": {}
       },
-      "id": "ha-check-switch",
+      "id": "127552ab-2947-4a63-8616-12aa9e58b6fc",
       "name": "HA: KI-Schalter Status",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [460, 460]
+      "position": [
+        -736,
+        -32
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
     },
     {
       "parameters": {
         "jsCode": "const evccState = $('evcc: SoC lesen').first()?.json ?? {};\nconst haSwitch = $input.first()?.json ?? {};\n\nconst soc = evccState?.battery?.soc ?? 50;\nconst kiActive = haSwitch?.state === 'on';\n\nreturn [{\n  json: {\n    soc,\n    ki_active: kiActive,\n    overcharge: soc > 95,\n    undercharge: soc < 10,\n    needs_action: !kiActive || soc > 95 || soc < 10\n  }\n}];"
       },
-      "id": "evaluate-safety",
+      "id": "9079474d-c6ac-4f68-b4c1-b0e2e77665f4",
       "name": "Safety-Check auswerten",
       "type": "n8n-nodes-base.code",
-      "position": [680, 380]
+      "position": [
+        -656,
+        192
+      ],
+      "typeVersion": 2
     },
     {
       "parameters": {
@@ -60,12 +79,17 @@
               "value2": true
             }
           ]
-        }
+        },
+        "options": {}
       },
-      "id": "needs-action",
+      "id": "7ccd09cb-2a18-4102-8f90-2542fd3da126",
       "name": "Aktion nötig?",
       "type": "n8n-nodes-base.if",
-      "position": [900, 380]
+      "position": [
+        -448,
+        192
+      ],
+      "typeVersion": 2.3
     },
     {
       "parameters": {
@@ -76,24 +100,32 @@
               "value2": true
             }
           ]
-        }
+        },
+        "options": {}
       },
-      "id": "check-disable-charging",
+      "id": "6a48f317-3b1f-486f-9a25-aa9b6afa6af8",
       "name": "Netzladen deaktivieren?",
       "type": "n8n-nodes-base.if",
-      "position": [1120, 300]
+      "position": [
+        -224,
+        112
+      ],
+      "typeVersion": 2.3
     },
     {
       "parameters": {
         "method": "DELETE",
         "url": "http://192.168.1.8:7070/api/batterygridchargelimit",
-        "authentication": "none",
         "options": {}
       },
-      "id": "evcc-disable-charging",
+      "id": "1449d969-b0e6-4070-a621-805280ef6766",
       "name": "evcc: Netzladen deaktivieren",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [1340, 200],
+      "position": [
+        0,
+        0
+      ],
+      "typeVersion": 4.4,
       "notes": "Greift bei SoC > 95% oder KI deaktiviert"
     },
     {
@@ -105,67 +137,132 @@
               "value2": true
             }
           ]
-        }
+        },
+        "options": {}
       },
-      "id": "check-disable-discharge",
+      "id": "1681b555-a84e-4f7c-9f3a-c82fc3b9c166",
       "name": "Entladen deaktivieren?",
       "type": "n8n-nodes-base.if",
-      "position": [1120, 460]
+      "position": [
+        -224,
+        272
+      ],
+      "typeVersion": 2.3
     },
     {
       "parameters": {
         "method": "POST",
         "url": "http://192.168.1.8:7070/api/batterydischargecontrol/false",
-        "authentication": "none",
         "options": {}
       },
-      "id": "evcc-disable-discharge",
+      "id": "15961600-a1c3-41e3-9962-8553d161a263",
       "name": "evcc: Entladen deaktivieren",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [1340, 460],
+      "position": [
+        0,
+        272
+      ],
+      "typeVersion": 4.4,
       "notes": "Greift bei SoC < 10%"
     }
   ],
+  "pinData": {},
   "connections": {
     "Trigger: alle 15 Minuten": {
-      "main": [[{ "node": "evcc: SoC lesen", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "evcc: SoC lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "evcc: SoC lesen": {
-      "main": [[{ "node": "HA: KI-Schalter Status", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "HA: KI-Schalter Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "HA: KI-Schalter Status": {
-      "main": [[{ "node": "Safety-Check auswerten", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Safety-Check auswerten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Safety-Check auswerten": {
-      "main": [[{ "node": "Aktion nötig?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Aktion nötig?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Aktion nötig?": {
       "main": [
         [
-          { "node": "Netzladen deaktivieren?", "type": "main", "index": 0 },
-          { "node": "Entladen deaktivieren?", "type": "main", "index": 0 }
-        ],
-        []
+          {
+            "node": "Netzladen deaktivieren?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Entladen deaktivieren?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Netzladen deaktivieren?": {
       "main": [
-        [{ "node": "evcc: Netzladen deaktivieren", "type": "main", "index": 0 }],
-        []
+        [
+          {
+            "node": "evcc: Netzladen deaktivieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Entladen deaktivieren?": {
       "main": [
-        [{ "node": "evcc: Entladen deaktivieren", "type": "main", "index": 0 }],
-        []
+        [
+          {
+            "node": "evcc: Entladen deaktivieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
+  "active": true,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
   },
+  "versionId": "c1385009-fe19-44b1-96ff-f247a4ca6188",
   "meta": {
-    "description": "Safety Monitor: läuft alle 15 min, rein regelbasiert. Kein AI. SoC-Grenzen: >95% Netzladen aus, <10% Entladen aus.",
-    "version": "1.0.0"
-  }
+    "instanceId": "8097a91cfaba8dfdfe2acc47748dc7815a709bc5aa1d37f7c8283b95db2bc694"
+  },
+  "id": "UDpwgwWXT3BtNc1N",
+  "tags": []
 }
