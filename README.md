@@ -37,6 +37,7 @@ Zusätzlich laufen:
 | Daily Optimizer | ✅ Live | täglich 14:00 + sofort bei KI-Aktivierung |
 | Safety Monitor | ✅ Live | alle 15 Minuten |
 | HA Override Handler | ✅ Live | Webhook von HA-Schaltern |
+| Intraday Adjuster | 🔧 Bereit | stündlich 6–22 Uhr (17×/Tag) |
 
 ## Projektstruktur
 
@@ -48,7 +49,8 @@ Zusätzlich laufen:
 ├── n8n-workflows/
 │   ├── daily-optimizer.json         # Claude + evcc MCP + InfluxDB, täglich 14:00
 │   ├── safety-monitor.json          # Regelbasiert, alle 15 min
-│   └── ha-override-handler.json     # Webhook-Handler, Sofortreaktion auf HA-Schalter
+│   ├── ha-override-handler.json     # Webhook-Handler, Sofortreaktion auf HA-Schalter
+│   └── intraday-adjuster.json       # Claude + evcc MCP + Preisstats, stündlich 6–22 Uhr
 ├── ha-config/
 │   ├── input_booleans.yaml          # KI-Schalter, Einspeise-Schalter
 │   ├── input_numbers.yaml           # Manueller Schwellwert
@@ -113,7 +115,29 @@ Claude setzt den Schwellwert direkt via `setBatteryGridChargeLimit` (Wert in EUR
 | `einspeise_logik_aktiv` → on | `discharge_enabled` | evcc: Entladen aktivieren |
 | `einspeise_logik_aktiv` → off | `discharge_disabled` | evcc: Entladen deaktivieren |
 
-## Phase 4 – Einspeise-Logik (optional)
+## Phase 4 – Intraday Adaptive Optimization
+
+Stündlich prüft der Intraday Adjuster ob PV-Prognose oder SoC vom Tagesplan abweichen und passt den Preisschwellwert nach.
+
+**Workflow:** `intraday-adjuster.json` – Trigger: `0 6-22 * * *` (stündlich 6–22 Uhr, 17×/Tag)
+
+**Flow:**
+1. HA KI-Schalter prüfen (abort wenn off)
+2. InfluxDB: historische `tariffGrid`-Statistik (90 Tage, ct/kWh) → Min/Avg/Max für heutigen Wochentag
+3. InfluxDB: `homePower` 28-Tage-Durchschnitt → erwarteter Tagesverbrauch
+4. Claude Sonnet liest via evcc MCP: SoC, PV-Ist + Prognose, Tibber-Preise rest heute/morgen
+5. Claude entscheidet: `keep` / `update` (setBatteryGridChargeLimit) / `remove` (removeBatteryGridChargeLimit)
+6. Ergebnis → `sensor.battery_intraday_adjustment` in HA
+
+**Setup:** In n8n importieren, Credentials zuweisen (Home Assistant Token, InfluxDB evcc, Anthropic), MCP endpointUrl manuell eintragen, aktivieren.
+
+**Neue HA Entity:**
+
+| Entity | Inhalt |
+|--------|--------|
+| `sensor.battery_intraday_adjustment` | state: keep/update/remove, Attribute: threshold_ct, reasoning, last_updated |
+
+## Phase 5 – Einspeise-Logik (optional)
 
 Batterie aktiv entladen wenn Tibber-Preis hoch genug:
 - Einspeise-Schwellwert berechnen (Tibber-Preis > Einspeisevergütung 6,7 ct + Puffer)
