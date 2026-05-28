@@ -149,7 +149,17 @@ Pro Lauf ca. 4.500 Input- + 400 Output-Tokens (System-Prompt + MCP-Responses von
 | Daily Optimizer (1×/Tag) | 30 | ~$0,60 |
 | **Gesamt** | | **~$10–15** |
 
-Sparpotenzial: Intraday-Trigger auf alle 2h reduzieren (`0 6-22/2 * * *`) → ~$5–8/Monat.
+**Sparpotenzial:**
+- Intraday-Trigger auf alle 2h reduzieren (`0 6-22/2 * * *`) → ~$5–8/Monat
+- Günstigeres Modell: im Agent-Node Anthropic durch OpenAI ersetzen, Rest bleibt gleich
+
+| Modell | Input | Output | ~Kosten/Monat |
+|--------|-------|--------|---------------|
+| Claude Sonnet 4.6 | $3/MTok | $15/MTok | ~$12 |
+| GPT-4o | $2,50/MTok | $10/MTok | ~$8 |
+| GPT-4o mini | $0,15/MTok | $0,60/MTok | ~$0,50 |
+
+GPT-4o mini ist am günstigsten, Reasoning-Qualität bei Energieoptimierung aber ungetestet.
 
 ## Phase 5 – Einspeise-Logik (optional)
 
