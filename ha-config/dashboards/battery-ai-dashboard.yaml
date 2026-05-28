@@ -36,16 +36,39 @@ views:
             title: "Aktuelle KI-Entscheidung"
             entities:
               - entity: sensor.battery_charge_threshold
-                name: "Preisschwellwert"
+                name: "Preisschwellwert (Daily)"
                 icon: mdi:currency-eur
               - type: attribute
                 entity: sensor.battery_charge_threshold
                 attribute: reasoning
-                name: "Begründung (Claude)"
+                name: "Begründung Daily Optimizer"
                 icon: mdi:brain
               - entity: sensor.battery_charge_threshold
                 attribute: last_updated
-                name: "Letzte Berechnung"
+                name: "Letzte Berechnung (Daily)"
+                icon: mdi:clock-outline
+
+          # Intraday Anpassung
+          - type: entities
+            title: "Intraday Anpassung (stündlich)"
+            entities:
+              - entity: sensor.battery_intraday_adjustment
+                name: "Letzte Aktion"
+                icon: mdi:refresh-auto
+              - type: attribute
+                entity: sensor.battery_intraday_adjustment
+                attribute: threshold_ct
+                name: "Schwellwert (ct/kWh)"
+                icon: mdi:currency-eur
+              - type: attribute
+                entity: sensor.battery_intraday_adjustment
+                attribute: reasoning
+                name: "Begründung (Intraday)"
+                icon: mdi:brain
+              - type: attribute
+                entity: sensor.battery_intraday_adjustment
+                attribute: last_updated
+                name: "Letzte Prüfung"
                 icon: mdi:clock-outline
 
           # Steuerung
@@ -68,7 +91,9 @@ views:
         title: "Verlauf (letzte 24h)"
         entities:
           - entity: sensor.battery_charge_threshold
-            name: "Schwellwert"
+            name: "Schwellwert (Daily)"
+          - entity: sensor.battery_intraday_adjustment
+            name: "Intraday Aktion"
           - entity: sensor.evcc_battery_soc
             name: "SoC"
         hours_to_show: 24
