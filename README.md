@@ -21,7 +21,7 @@ Zusätzlich laufen:
 
 | Komponente | Rolle | Adresse |
 |------------|-------|---------|
-| **n8n** | Orchestrator (läuft als HA-Addon) | `https://api-workflow.willeke.local` |
+| **n8n** | Orchestrator (läuft als HA-Addon) | `http://homeassistant:8081` (intern) |
 | **Claude Sonnet** (`claude-sonnet-4-6`) | KI-Entscheidungsmotor via n8n AI Agent | Anthropic API |
 | **evcc** | Batteriesteuerung via REST API + MCP | `http://192.168.1.8:7070` |
 | **evcc MCP** | Tool-Interface für Claude (experimental) | `http://192.168.1.8:7070/mcp` |
