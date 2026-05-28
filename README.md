@@ -161,6 +161,25 @@ Pro Lauf ca. 4.500 Input- + 400 Output-Tokens (System-Prompt + MCP-Responses von
 
 GPT-4o mini ist am günstigsten, Reasoning-Qualität bei Energieoptimierung aber ungetestet.
 
+## Phase 6 – Token-Tracking & Kostenübersicht (geplant)
+
+Token-Verbrauch und API-Kosten pro Lauf erfassen und im Dashboard anzeigen.
+
+**Umsetzung:**
+- n8n AI Agent Node gibt nach jedem Lauf `tokenUsage` zurück (`inputTokens`, `outputTokens`)
+- Code-Node berechnet Kosten: `(inputTokens / 1_000_000 * 3) + (outputTokens / 1_000_000 * 15)`
+- Kumulierte Monatstkosten in HA-Sensor speichern
+
+**Neue HA Entities:**
+
+| Entity | Inhalt |
+|--------|--------|
+| `sensor.battery_ai_tokens_last_run` | Input + Output Tokens des letzten Laufs |
+| `sensor.battery_ai_cost_today` | Kosten heute in USD (kumuliert) |
+| `sensor.battery_ai_cost_month` | Kosten aktueller Monat in USD (kumuliert) |
+
+**Dashboard-Erweiterung:** Neue Karte "API-Kosten" mit heutigem Verbrauch, Monatssumme und Verlaufsgraph.
+
 ## Phase 5 – Einspeise-Logik (optional)
 
 Batterie aktiv entladen wenn Tibber-Preis hoch genug:
