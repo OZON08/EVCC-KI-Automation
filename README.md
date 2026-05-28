@@ -137,6 +137,20 @@ Stündlich prüft der Intraday Adjuster ob PV-Prognose oder SoC vom Tagesplan ab
 |--------|--------|
 | `sensor.battery_intraday_adjustment` | state: keep/update/remove, Attribute: threshold_ct, reasoning, last_updated |
 
+## API-Kosten (Anthropic)
+
+Claude Sonnet 4.6: $3 / 1M Input-Tokens, $15 / 1M Output-Tokens
+
+Pro Lauf ca. 4.500 Input- + 400 Output-Tokens (System-Prompt + MCP-Responses von getState + getTariffInfo).
+
+| Workflow | Läufe/Monat | Kosten/Monat |
+|----------|-------------|--------------|
+| Intraday Adjuster (17×/Tag) | 510 | ~$10 |
+| Daily Optimizer (1×/Tag) | 30 | ~$0,60 |
+| **Gesamt** | | **~$10–15** |
+
+Sparpotenzial: Intraday-Trigger auf alle 2h reduzieren (`0 6-22/2 * * *`) → ~$5–8/Monat.
+
 ## Phase 5 – Einspeise-Logik (optional)
 
 Batterie aktiv entladen wenn Tibber-Preis hoch genug:
