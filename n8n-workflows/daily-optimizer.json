@@ -22,6 +22,17 @@
       "typeVersion": 1.3
     },
     {
+      "parameters": {},
+      "id": "execute-workflow-trigger-id",
+      "name": "Wenn manuell aufgerufen",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        0,
+        -160
+      ],
+      "typeVersion": 1
+    },
+    {
       "parameters": {
         "url": "http://homeassistant:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
         "authentication": "genericCredentialType",
@@ -217,6 +228,17 @@
   ],
   "pinData": {},
   "connections": {
+    "Wenn manuell aufgerufen": {
+      "main": [
+        [
+          {
+            "node": "HA: KI-Schalter prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Trigger: täglich 14:00": {
       "main": [
         [
