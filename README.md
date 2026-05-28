@@ -37,7 +37,7 @@ Zusätzlich laufen:
 | Daily Optimizer | ✅ Live | täglich 14:00 + sofort bei KI-Aktivierung |
 | Safety Monitor | ✅ Live | alle 15 Minuten |
 | HA Override Handler | ✅ Live | Webhook von HA-Schaltern |
-| Intraday Adjuster | 🔧 Bereit | stündlich 6–22 Uhr (17×/Tag) |
+| Intraday Adjuster | ✅ Live | stündlich 6–22 Uhr (17×/Tag) |
 
 ## Projektstruktur
 
