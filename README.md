@@ -161,6 +161,39 @@ Pro Lauf ca. 4.500 Input- + 400 Output-Tokens (System-Prompt + MCP-Responses von
 
 GPT-4o mini ist am günstigsten, Reasoning-Qualität bei Energieoptimierung aber ungetestet.
 
+## Phase 7 – Ersparnis-Tracking (geplant)
+
+Berechnet wie viel die KI-Steuerung im Vergleich zu unoptimiertem Laden einspart.
+
+**Logik:**
+```
+Tatsächliche Kosten = Σ (Energie geladen in Slot × Tibber-Preis in dem Slot)
+Referenzkosten      = gleiche Energie × Tagesdurchschnittspreis
+Ersparnis           = Referenzkosten − Tatsächliche Kosten
+```
+
+**Datenquellen (InfluxDB):**
+- `batteryGridEnergy` oder `batteryPower` (Wh aus Netz geladen, pro Slot)
+- `tariffGrid` (Tibber-Preis zum jeweiligen Zeitpunkt)
+- Tagesdurchschnitt aus `tariffGrid` als Referenz
+
+**Neuer n8n-Workflow: `savings-tracker.json`**
+- Trigger: stündlich (kumuliert Stundenwert), täglich 23:55 (Tagesabschluss), monatlich 1. um 00:05
+- InfluxDB: Netz-Ladeenergie + Preise der letzten Stunde/Tag/Monat per `JOIN` oder parallele Queries
+- Code-Node: Ersparnis berechnen
+- Ergebnis → HA-Sensoren
+
+**Neue HA Entities:**
+
+| Entity | Inhalt |
+|--------|--------|
+| `sensor.battery_ai_savings_hour` | Ersparnis letzte Stunde (EUR) |
+| `sensor.battery_ai_savings_today` | Ersparnis heute kumuliert (EUR) |
+| `sensor.battery_ai_savings_month` | Ersparnis aktueller Monat (EUR) |
+| `sensor.battery_ai_savings_total` | Gesamtersparnis seit Start (EUR) |
+
+**Dashboard-Erweiterung:** Karte "KI-Ersparnis" mit Stunden/Tages/Monatswerten und Verlaufsgraph.
+
 ## Phase 6 – Token-Tracking & Kostenübersicht (geplant)
 
 Token-Verbrauch und API-Kosten pro Lauf erfassen und im Dashboard anzeigen.
