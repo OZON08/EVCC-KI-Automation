@@ -57,6 +57,44 @@
     },
     {
       "parameters": {
+        "url": "http://homeassistant:8123/api/states/input_boolean.einspeise_logik_aktiv",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "ha-einspeise-schalter",
+      "name": "HA: Einspeise-Schalter lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [672, -160],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://homeassistant:8123/api/states/input_number.min_soc_einspeisen",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "ha-min-soc",
+      "name": "HA: Min-SoC lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [672, -320],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
+    },
+    {
+      "parameters": {
         "url": "http://a0d7b954-influxdb:8086/query",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpBasicAuth",
@@ -78,7 +116,7 @@
       "id": "d4e5f6a7-b8c9-0123-def0-234567890123",
       "name": "InfluxDB: Tibber Preisstats",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [672, 0],
+      "position": [896, -160],
       "typeVersion": 4.4,
       "credentials": {
         "httpBasicAuth": {
@@ -111,7 +149,7 @@
       "id": "e5f6a7b8-c9d0-1234-ef01-345678901234",
       "name": "InfluxDB: Verbrauch abfragen",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [896, 0],
+      "position": [1120, -160],
       "typeVersion": 4.4,
       "credentials": {
         "httpBasicAuth": {
@@ -123,27 +161,27 @@
     },
     {
       "parameters": {
-        "jsCode": "const tariffRaw = $('InfluxDB: Tibber Preisstats').first()?.json ?? {};\nconst homeRaw = $input.first()?.json ?? {};\n\n// Process tariffGrid: compute price stats for today's weekday\nconst tariffSeries = tariffRaw?.results?.[0]?.series?.[0]?.values ?? [];\nconst todayWeekday = new Date().getDay();\n\nconst sameWeekdayPrices = tariffSeries\n  .filter(([time]) => new Date(time).getDay() === todayWeekday)\n  .map(([, price]) => price)\n  .filter(p => typeof p === 'number' && p > 0);\n\nconst allPrices = tariffSeries\n  .map(([, price]) => price)\n  .filter(p => typeof p === 'number' && p > 0);\n\nconst prices = sameWeekdayPrices.length >= 10 ? sameWeekdayPrices : allPrices;\nconst priceSource = sameWeekdayPrices.length >= 10 ? 'gleicher Wochentag (90 Tage)' : 'alle Wochentage (90 Tage)';\n\nconst avg_price = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 20;\nconst min_price = prices.length > 0 ? Math.min(...prices) : 10;\nconst max_price = prices.length > 0 ? Math.max(...prices) : 40;\n\n// Process homePower: avg consumption (same weekday preferred)\nconst homeSeries = homeRaw?.results?.[0]?.series?.[0]?.values ?? [];\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst targetWeekday = tomorrow.getDay();\n\nconst sameWeekday = homeSeries\n  .filter(([time, kwh]) => new Date(time).getDay() === targetWeekday && kwh > 1)\n  .map(([, kwh]) => kwh);\n\nconst allDays = homeSeries\n  .filter(([, kwh]) => kwh > 1)\n  .map(([, kwh]) => kwh);\n\nconst homeValues = sameWeekday.length >= 2 ? sameWeekday : allDays;\nconst avg_consumption = homeValues.length > 0\n  ? homeValues.reduce((a, b) => a + b, 0) / homeValues.length\n  : 10;\n\nconst avgRounded = Math.round(avg_consumption * 10) / 10;\nconst avgPriceRounded = Math.round(avg_price * 10) / 10;\nconst minPriceRounded = Math.round(min_price * 10) / 10;\nconst maxPriceRounded = Math.round(max_price * 10) / 10;\n\nconst prompt = 'Ueberpruefe den Batterie-Preisschwellwert fuer den Rest des Tages und passe ihn bei Bedarf an.\\n\\n' +\n  'Historische Tibber-Preise (' + priceSource + '):\\n' +\n  '- Durchschnitt: ' + avgPriceRounded + ' ct/kWh | Minimum: ' + minPriceRounded + ' ct/kWh | Maximum: ' + maxPriceRounded + ' ct/kWh\\n\\n' +\n  'Erwarteter Tagesverbrauch: ' + avgRounded + ' kWh\\n\\n' +\n  'Vorgehen:\\n' +\n  '1. Rufe getState auf: SoC, aktuelle PV-Leistung, Solar-Prognose rest heute und morgen\\n' +\n  '2. Rufe getTariffInfo mit type=grid auf: Tibber-Preise rest heute und morgen\\n' +\n  '3. Entscheide:\\n' +\n  '   Verfuegbare Kapazitaet = (1 - SoC/100) * 7.6 kWh\\n' +\n  '   Restbedarf = verbleibender Tagesverbrauch - restliche Solar-Prognose heute - verfuegbare Kapazitaet\\n' +\n  '   - Wenn Restbedarf <= 0: action = \"remove\" (Solar + SoC reichen, kein Netzladen noetig)\\n' +\n  '   - Wenn Restbedarf > 0 und guenstige Slots verfuegbar (unter historischem Durchschnitt): action = \"update\" mit neuem threshold_ct\\n' +\n  '   - Wenn aktuelle Situation dem Tagesplan entspricht (keine wesentliche Aenderung): action = \"keep\"\\n' +\n  '4. Bei action = \"update\": setBatteryGridChargeLimit aufrufen (Wert in EUR/kWh, also ct/100)\\n' +\n  '5. Bei action = \"remove\": removeBatteryGridChargeLimit aufrufen\\n' +\n  '6. Bei action = \"keep\": keinen evcc-API-Aufruf machen\\n\\n' +\n  'Antworte IMMER mit validem JSON: { \"action\": \"keep\", \"threshold_ct\": 0, \"reasoning\": \"<kurze deutsche Begruendung>\" }';\n\nreturn [{ json: {\n  avg_consumption_kwh: avgRounded,\n  avg_price_ct: avgPriceRounded,\n  min_price_ct: minPriceRounded,\n  max_price_ct: maxPriceRounded,\n  price_source: priceSource,\n  prompt\n}}];"
+        "jsCode": "const tariffRaw = $('InfluxDB: Tibber Preisstats').first()?.json ?? {};\nconst homeRaw = $input.first()?.json ?? {};\n\nconst einspeiseAktiv = $('HA: Einspeise-Schalter lesen').first()?.json?.state === 'on';\nconst minSoc = parseFloat($('HA: Min-SoC lesen').first()?.json?.state ?? '30');\n\nconst tariffSeries = tariffRaw?.results?.[0]?.series?.[0]?.values ?? [];\nconst todayWeekday = new Date().getDay();\n\nconst sameWeekdayPrices = tariffSeries\n  .filter(([time]) => new Date(time).getDay() === todayWeekday)\n  .map(([, price]) => price)\n  .filter(p => typeof p === 'number' && p > 0);\n\nconst allPrices = tariffSeries\n  .map(([, price]) => price)\n  .filter(p => typeof p === 'number' && p > 0);\n\nconst prices = sameWeekdayPrices.length >= 10 ? sameWeekdayPrices : allPrices;\nconst priceSource = sameWeekdayPrices.length >= 10 ? 'gleicher Wochentag (90 Tage)' : 'alle Wochentage (90 Tage)';\n\nconst avg_price = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 20;\nconst min_price = prices.length > 0 ? Math.min(...prices) : 10;\nconst max_price = prices.length > 0 ? Math.max(...prices) : 40;\n\nconst homeSeries = homeRaw?.results?.[0]?.series?.[0]?.values ?? [];\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst targetWeekday = tomorrow.getDay();\n\nconst sameWeekday = homeSeries\n  .filter(([time, kwh]) => new Date(time).getDay() === targetWeekday && kwh > 1)\n  .map(([, kwh]) => kwh);\n\nconst allDays = homeSeries\n  .filter(([, kwh]) => kwh > 1)\n  .map(([, kwh]) => kwh);\n\nconst homeValues = sameWeekday.length >= 2 ? sameWeekday : allDays;\nconst avg_consumption = homeValues.length > 0\n  ? homeValues.reduce((a, b) => a + b, 0) / homeValues.length\n  : 10;\n\nconst avgRounded = Math.round(avg_consumption * 10) / 10;\nconst avgPriceRounded = Math.round(avg_price * 10) / 10;\nconst minPriceRounded = Math.round(min_price * 10) / 10;\nconst maxPriceRounded = Math.round(max_price * 10) / 10;\n\nconst prompt = 'Ueberpruefe den Batterie-Preisschwellwert fuer den Rest des Tages und passe ihn bei Bedarf an.\\n\\n' +\n  'Historische Tibber-Preise (' + priceSource + '):\\n' +\n  '- Durchschnitt: ' + avgPriceRounded + ' ct/kWh | Minimum: ' + minPriceRounded + ' ct/kWh | Maximum: ' + maxPriceRounded + ' ct/kWh\\n\\n' +\n  'Erwarteter Tagesverbrauch: ' + avgRounded + ' kWh\\n\\n' +\n  'Vorgehen:\\n' +\n  '1. Rufe getState auf: SoC, aktuelle PV-Leistung, Solar-Prognose rest heute und morgen\\n' +\n  '2. Rufe getTariffInfo mit type=grid auf: Tibber-Preise rest heute und morgen\\n' +\n  '3. Ladeentscheidung (charge_action):\\n' +\n  '   Verfuegbare Kapazitaet = (1 - SoC/100) * 7.6 kWh\\n' +\n  '   Restbedarf = verbleibender Tagesverbrauch - restliche Solar-Prognose heute - verfuegbare Kapazitaet\\n' +\n  '   - Wenn Restbedarf <= 0: charge_action = \"remove\"\\n' +\n  '   - Wenn Restbedarf > 0 und guenstige Slots verfuegbar (unter historischem Durchschnitt): charge_action = \"update\" mit threshold_ct\\n' +\n  '   - Sonst: charge_action = \"keep\"\\n' +\n  '4. Einspeise-Entscheidung (discharge_action):\\n' +\n  '   Einspeise-Logik aktiv: ' + (einspeiseAktiv ? 'ja' : 'nein') + '\\n' +\n  '   Minimaler SoC fuer Einspeisen: ' + minSoc + '%\\n' +\n  '   Einspeiseverguetung: 6.7 ct/kWh (fix)\\n' +\n  '   - Wenn Einspeise-Logik aus: discharge_action = \"disable\"\\n' +\n  '   - Wenn an UND SoC > ' + minSoc + '% UND Solar+SoC deckt Restbedarf UND aktueller Tibber-Preis > 6.7 ct: discharge_action = \"enable\"\\n' +\n  '   - Sonst: discharge_action = \"disable\"\\n' +\n  '5. Bei charge_action \"update\": setBatteryGridChargeLimit aufrufen (Wert in EUR/kWh)\\n' +\n  '6. Bei charge_action \"remove\": removeBatteryGridChargeLimit aufrufen\\n' +\n  '7. Bei discharge_action: n8n setzt batterydischargecontrol (kein MCP-Aufruf noetig)\\n\\n' +\n  'Antworte IMMER mit validem JSON: { \"charge_action\": \"keep\", \"threshold_ct\": 0, \"discharge_action\": \"disable\", \"reasoning\": \"<kurze deutsche Begruendung>\" }';\n\nreturn [{ json: {\n  avg_consumption_kwh: avgRounded,\n  avg_price_ct: avgPriceRounded,\n  min_price_ct: minPriceRounded,\n  max_price_ct: maxPriceRounded,\n  price_source: priceSource,\n  einspeise_aktiv: einspeiseAktiv,\n  min_soc: minSoc,\n  prompt\n}}];"
       },
       "id": "f6a7b8c9-d0e1-2345-f012-456789012345",
       "name": "Kontext berechnen",
       "type": "n8n-nodes-base.code",
-      "position": [1120, 0],
+      "position": [1344, -160],
       "typeVersion": 2,
-      "notes": "Kombiniert tariffGrid-Statistik (Min/Avg/Max für gleichen Wochentag) mit Verbrauchsdurchschnitt. Baut Prompt für Claude."
+      "notes": "Kombiniert tariffGrid-Statistik (Min/Avg/Max für gleichen Wochentag) mit Verbrauchsdurchschnitt und Einspeise-Parametern. Baut Prompt für Claude."
     },
     {
       "parameters": {
         "promptType": "define",
         "text": "={{ $json.prompt }}",
         "options": {
-          "systemMessage": "Du bist ein Energieoptimierungs-Agent für eine Hausbatterie.\nSpecs: 7,6 kWh Kapazität, max. 7 kW Ladeleistung, Einspeisevergütung 6,7 ct/kWh.\nDu hast Zugriff auf evcc via MCP-Tools. Nutze sie um den aktuellen Zustand zu lesen und den Schwellwert anzupassen.\nWichtig: setBatteryGridChargeLimit erwartet den Wert in EUR/kWh (nicht ct). Beispiel: 10 ct = 0.10 EUR.\nNur bei action=update oder action=remove einen API-Aufruf machen. Bei action=keep nichts tun.\nGib am Ende IMMER valides JSON zurück: { \"action\": \"keep\"|\"update\"|\"remove\", \"threshold_ct\": <Zahl>, \"reasoning\": \"<Text>\" }"
+          "systemMessage": "Du bist ein Energieoptimierungs-Agent für eine Hausbatterie.\nSpecs: 7,6 kWh Kapazität, max. 7 kW Ladeleistung, Einspeisevergütung 6,7 ct/kWh.\nDu hast Zugriff auf evcc via MCP-Tools. Nutze sie um den aktuellen Zustand zu lesen und den Schwellwert anzupassen.\nWichtig: setBatteryGridChargeLimit erwartet den Wert in EUR/kWh (nicht ct). Beispiel: 10 ct = 0.10 EUR.\nNur bei charge_action=update oder charge_action=remove einen API-Aufruf machen. Bei charge_action=keep nichts tun.\nDie discharge_action wird von n8n umgesetzt – du musst keinen evcc-API-Aufruf dafür machen.\nGib am Ende IMMER valides JSON zurück: { \"charge_action\": \"keep\"|\"update\"|\"remove\", \"threshold_ct\": <Zahl>, \"discharge_action\": \"enable\"|\"disable\", \"reasoning\": \"<Text>\" }"
         }
       },
       "id": "a7b8c9d0-e1f2-3456-0123-567890123456",
       "name": "Claude Sonnet + evcc MCP",
       "type": "@n8n/n8n-nodes-langchain.agent",
-      "position": [1344, 0],
+      "position": [1568, -160],
       "typeVersion": 3.1,
       "notes": "Claude liest SoC + PV-Prognose + Tibber-Preise via MCP, entscheidet ob Anpassung nötig und setzt Schwellwert direkt."
     },
@@ -155,7 +193,7 @@
       "id": "b8c9d0e1-f2a3-4567-1234-678901234567",
       "name": "evcc MCP Tools",
       "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
-      "position": [1552, 224],
+      "position": [1776, 64],
       "typeVersion": 1.2,
       "notes": "evcc MCP: getState, getTariffInfo, setBatteryGridChargeLimit, removeBatteryGridChargeLimit"
     },
@@ -174,7 +212,7 @@
       "id": "c9d0e1f2-a3b4-5678-2345-789012345678",
       "name": "Claude Sonnet 4.6",
       "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "position": [1344, 288],
+      "position": [1568, 128],
       "typeVersion": 1.3,
       "credentials": {
         "anthropicApi": {
@@ -185,12 +223,12 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first() ?? $input.item;\nconst data = item?.json ?? {};\n\nconst response = data.output\n  ?? data.text\n  ?? data.message\n  ?? data.content\n  ?? JSON.stringify(data);\n\nlet action = 'keep';\nlet threshold = 0;\nlet reasoning = 'Keine Begruendung';\n\n// Letzten JSON-Block mit \"action\" extrahieren (kein verschachtelte Klammern)\nconst allMatches = [...String(response).matchAll(/\\{[^{}]*\"action\"[^{}]*\\}/g)];\nconst jsonMatch = allMatches.length > 0 ? allMatches[allMatches.length - 1][0] : null;\nif (jsonMatch) {\n  try {\n    const parsed = JSON.parse(jsonMatch);\n    action = parsed.action ?? 'keep';\n    threshold = parseFloat(parsed.threshold_ct ?? 0);\n    reasoning = parsed.reasoning ?? reasoning;\n  } catch(e) {}\n}\n\n// Fallback: action direkt suchen\nif (!['keep', 'update', 'remove'].includes(action)) {\n  const actionMatch = String(response).match(/\"action\"[^\"]*\"([^\"]+)\"/);\n  if (actionMatch) action = actionMatch[1];\n}\n\nif (isNaN(threshold)) threshold = 0;\nthreshold = Math.min(50, Math.max(0, threshold));\n\nreturn [{ json: {\n  action,\n  threshold_ct: threshold,\n  reasoning,\n  timestamp: new Date().toISOString()\n}}];"
+        "jsCode": "const item = $input.first() ?? $input.item;\nconst data = item?.json ?? {};\n\nconst response = data.output\n  ?? data.text\n  ?? data.message\n  ?? data.content\n  ?? JSON.stringify(data);\n\nlet action = 'keep';\nlet threshold = 0;\nlet reasoning = 'Keine Begruendung';\nlet dischargeAction = 'disable';\n\nconst allMatches = [...String(response).matchAll(/\\{[^{}]*\"charge_action\"[^{}]*\\}/g)];\nconst jsonMatch = allMatches.length > 0 ? allMatches[allMatches.length - 1][0] : null;\nif (jsonMatch) {\n  try {\n    const parsed = JSON.parse(jsonMatch);\n    action = parsed.charge_action ?? 'keep';\n    threshold = parseFloat(parsed.threshold_ct ?? 0);\n    reasoning = parsed.reasoning ?? reasoning;\n    dischargeAction = parsed.discharge_action ?? 'disable';\n  } catch(e) {}\n}\n\nif (!['keep', 'update', 'remove'].includes(action)) {\n  const actionMatch = String(response).match(/\"charge_action\"[^\"]*\"([^\"]+)\"/);\n  if (actionMatch) action = actionMatch[1];\n}\n\nif (!['enable', 'disable'].includes(dischargeAction)) dischargeAction = 'disable';\nif (isNaN(threshold)) threshold = 0;\nthreshold = Math.min(50, Math.max(0, threshold));\n\nreturn [{ json: {\n  action,\n  charge_action: action,\n  threshold_ct: threshold,\n  discharge_action: dischargeAction,\n  reasoning,\n  timestamp: new Date().toISOString()\n}}];"
       },
       "id": "d0e1f2a3-b4c5-6789-3456-890123456789",
       "name": "Ergebnis extrahieren",
       "type": "n8n-nodes-base.code",
-      "position": [1568, 0],
+      "position": [1792, -160],
       "typeVersion": 2
     },
     {
@@ -201,13 +239,13 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"state\": $json.action, \"attributes\": { \"threshold_ct\": $json.threshold_ct, \"unit_of_measurement\": \"ct/kWh\", \"friendly_name\": \"Batterie Intraday Anpassung\", \"reasoning\": $json.reasoning, \"last_updated\": $json.timestamp } } }}",
+        "jsonBody": "={{ { \"state\": $json.action, \"attributes\": { \"threshold_ct\": $json.threshold_ct, \"unit_of_measurement\": \"ct/kWh\", \"friendly_name\": \"Batterie Intraday Anpassung\", \"reasoning\": $json.reasoning, \"discharge_action\": $json.discharge_action, \"last_updated\": $json.timestamp } } }}",
         "options": {}
       },
       "id": "e1f2a3b4-c5d6-7890-4567-901234567890",
       "name": "HA: Intraday Status aktualisieren",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [1792, 0],
+      "position": [2016, -160],
       "typeVersion": 4.4,
       "credentials": {
         "httpHeaderAuth": {
@@ -215,7 +253,50 @@
           "name": "Home Assistant Token"
         }
       },
-      "notes": "Schreibt action (keep/update/remove), threshold_ct und reasoning nach HA sensor.battery_intraday_adjustment."
+      "notes": "Schreibt action (keep/update/remove), threshold_ct, discharge_action und reasoning nach HA sensor.battery_intraday_adjustment."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.discharge_action }}",
+              "operation": "equals",
+              "value2": "enable"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-discharge",
+      "name": "Einspeisen aktivieren?",
+      "type": "n8n-nodes-base.if",
+      "position": [2016, 0],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.8:7070/api/batterydischargecontrol/true",
+        "options": {}
+      },
+      "id": "evcc-discharge-on",
+      "name": "evcc: Entladen aktivieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2240, -80],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://192.168.1.8:7070/api/batterydischargecontrol/false",
+        "options": {}
+      },
+      "id": "evcc-discharge-off",
+      "name": "evcc: Entladen deaktivieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2240, 80],
+      "typeVersion": 4.4
     }
   ],
   "pinData": {},
@@ -246,12 +327,34 @@
       "main": [
         [
           {
-            "node": "InfluxDB: Tibber Preisstats",
+            "node": "HA: Einspeise-Schalter lesen",
             "type": "main",
             "index": 0
           }
         ],
         []
+      ]
+    },
+    "HA: Einspeise-Schalter lesen": {
+      "main": [
+        [
+          {
+            "node": "HA: Min-SoC lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HA: Min-SoC lesen": {
+      "main": [
+        [
+          {
+            "node": "InfluxDB: Tibber Preisstats",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "InfluxDB: Tibber Preisstats": {
@@ -327,6 +430,29 @@
             "node": "HA: Intraday Status aktualisieren",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Einspeisen aktivieren?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Einspeisen aktivieren?": {
+      "main": [
+        [
+          {
+            "node": "evcc: Entladen aktivieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "evcc: Entladen deaktivieren",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -337,7 +463,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "intraday-adjuster-v1",
+  "versionId": "intraday-adjuster-v2",
   "meta": {
     "instanceId": "8097a91cfaba8dfdfe2acc47748dc7815a709bc5aa1d37f7c8283b95db2bc694"
   },
