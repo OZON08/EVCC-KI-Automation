@@ -62,6 +62,11 @@ views:
                 icon: mdi:currency-eur
               - type: attribute
                 entity: sensor.battery_intraday_adjustment
+                attribute: discharge_action
+                name: "Einspeisen"
+                icon: mdi:transmission-tower-export
+              - type: attribute
+                entity: sensor.battery_intraday_adjustment
                 attribute: reasoning
                 name: "Begründung (Intraday)"
                 icon: mdi:brain
@@ -79,6 +84,8 @@ views:
                 name: "KI-Steuerung"
               - entity: input_boolean.einspeise_logik_aktiv
                 name: "Einspeise-Logik"
+              - entity: input_number.min_soc_einspeisen
+                name: "Min. SoC Einspeisen"
               - entity: input_number.manueller_preisschwellwert
                 name: "Manueller Schwellwert (0 = KI)"
 
