@@ -57,6 +57,35 @@
     },
     {
       "parameters": {
+        "url": "http://homeassistant:8123/api/states/input_select.intraday_frequenz",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "ha-frequenz-lesen",
+      "name": "HA: Frequenz lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [448, 0],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const state = $input.first()?.json?.state ?? '1h';\nconst freq = parseInt(state) || 1;\nconst currentHour = new Date().getHours();\nconst shouldRun = (currentHour - 6) % freq === 0;\nif (!shouldRun) return [];\nreturn [{ json: { frequency_h: freq } }];"
+      },
+      "id": "frequenz-pruefen",
+      "name": "Frequenz prüfen",
+      "type": "n8n-nodes-base.code",
+      "position": [560, 0],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
         "url": "http://homeassistant:8123/api/states/input_boolean.einspeise_logik_aktiv",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
@@ -327,12 +356,34 @@
       "main": [
         [
           {
-            "node": "HA: Einspeise-Schalter lesen",
+            "node": "HA: Frequenz lesen",
             "type": "main",
             "index": 0
           }
         ],
         []
+      ]
+    },
+    "HA: Frequenz lesen": {
+      "main": [
+        [
+          {
+            "node": "Frequenz prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frequenz prüfen": {
+      "main": [
+        [
+          {
+            "node": "HA: Einspeise-Schalter lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "HA: Einspeise-Schalter lesen": {
