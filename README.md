@@ -1,6 +1,6 @@
 # EVCC KI-Automation – Intelligente Hausbatteriesteuerung
 
-KI-gesteuertes System zur kostenoptimierten Ladung der Hausbatterie (RCT Power) aus dem Netz, basierend auf dynamischen Tibber-Strompreisen, Solar-Prognosen und gemessenen Verbrauchsdaten aus InfluxDB.
+KI-gesteuertes System zur kostenoptimierten Ladung und Entladung der Hausbatterie (RCT Power), basierend auf dynamischen Tibber-Strompreisen, Solar-Prognosen und gemessenen Verbrauchsdaten aus InfluxDB.
 
 ## Wie es funktioniert
 
@@ -14,6 +14,7 @@ Täglich um 14:00 Uhr (sobald Tibber die Preise für den nächsten Tag veröffen
 6. n8n schreibt Ergebnis + Begründung nach Home Assistant
 
 Zusätzlich laufen:
+- **Intraday Adjuster** (stündlich 6–22 Uhr): passt Schwellwert tagsüber nach und entscheidet ob Batterie ins Netz einspeist
 - **Safety Monitor** (alle 15 min): überwacht SoC-Grenzen, deaktiviert Netzladen/Entladen bei Bedarf
 - **HA Override Handler**: reagiert sofort auf HA-Schalter-Änderungen via Webhook
 
@@ -53,7 +54,7 @@ Zusätzlich laufen:
 │   └── intraday-adjuster.json       # Claude + evcc MCP + Preisstats, stündlich 6–22 Uhr
 ├── ha-config/
 │   ├── input_booleans.yaml          # KI-Schalter, Einspeise-Schalter
-│   ├── input_numbers.yaml           # Manueller Schwellwert
+│   ├── input_numbers.yaml           # Manueller Schwellwert, Min-SoC Einspeisen
 │   ├── rest_commands.yaml           # n8n Webhook-Aufruf von HA
 │   ├── automations/
 │   │   └── battery-ai-webhooks.yaml # Schalter → n8n Webhooks
@@ -70,7 +71,9 @@ Zusätzlich laufen:
 | `input_boolean.ki_batteriesteuerung_aktiv` | Schalter | KI-Steuerung an/aus |
 | `input_boolean.einspeise_logik_aktiv` | Schalter | Einspeise-Logik (optional) |
 | `input_number.manueller_preisschwellwert` | Zahl | Override (0 = KI übernimmt) |
-| `sensor.battery_charge_threshold` | Sensor | Aktueller Schwellwert + Claude-Begründung |
+| `input_number.min_soc_einspeisen` | Zahl | Minimaler SoC für Einspeisen (10–50%, default 30%) |
+| `sensor.battery_charge_threshold` | Sensor | Aktueller Schwellwert + Claude-Begründung (Daily) |
+| `sensor.battery_intraday_adjustment` | Sensor | Intraday-Aktion + Einspeise-Status + Begründung |
 
 ## Setup-Notizen
 
@@ -126,36 +129,37 @@ Stündlich prüft der Intraday Adjuster ob PV-Prognose oder SoC vom Tagesplan ab
 2. InfluxDB: historische `tariffGrid`-Statistik (90 Tage, ct/kWh) → Min/Avg/Max für heutigen Wochentag
 3. InfluxDB: `homePower` 28-Tage-Durchschnitt → erwarteter Tagesverbrauch
 4. Claude Sonnet liest via evcc MCP: SoC, PV-Ist + Prognose, Tibber-Preise rest heute/morgen
-5. Claude entscheidet: `keep` / `update` (setBatteryGridChargeLimit) / `remove` (removeBatteryGridChargeLimit)
-6. Ergebnis → `sensor.battery_intraday_adjustment` in HA
+5. Claude entscheidet Laden: `keep` / `update` (setBatteryGridChargeLimit) / `remove` (removeBatteryGridChargeLimit)
+6. Claude entscheidet Entladen (Phase 5): `discharge_action = enable|disable`
+7. n8n setzt batterydischargecontrol, Ergebnis → `sensor.battery_intraday_adjustment` in HA
 
 **Setup:** In n8n importieren, Credentials zuweisen (Home Assistant Token, InfluxDB evcc, Anthropic), MCP endpointUrl manuell eintragen, aktivieren.
 
-**Neue HA Entity:**
+**HA Entity:**
 
 | Entity | Inhalt |
 |--------|--------|
-| `sensor.battery_intraday_adjustment` | state: keep/update/remove, Attribute: threshold_ct, reasoning, last_updated |
+| `sensor.battery_intraday_adjustment` | state: keep/update/remove, Attribute: threshold_ct, discharge_action, reasoning, last_updated |
 
 ## API-Kosten (Anthropic)
 
 Claude Sonnet 4.6: $3 / 1M Input-Tokens, $15 / 1M Output-Tokens
 
-Pro Lauf ca. 4.500 Input- + 400 Output-Tokens (System-Prompt + MCP-Responses von getState + getTariffInfo).
+Pro Lauf ca. 5.000 Input- + 450 Output-Tokens (System-Prompt + MCP-Responses + Phase 5 Einspeise-Kontext).
 
-| Workflow | Läufe/Monat | Kosten/Monat |
-|----------|-------------|--------------|
-| Intraday Adjuster (17×/Tag) | 510 | ~$10 |
-| Daily Optimizer (1×/Tag) | 30 | ~$0,60 |
-| **Gesamt** | | **~$10–15** |
+| Workflow | Läufe/Monat | Input-Token/Lauf | ~Kosten/Monat |
+|----------|-------------|-----------------|---------------|
+| Intraday Adjuster (17×/Tag) | 510 | ~5.000 | ~$10 |
+| Daily Optimizer (1×/Tag) | 30 | ~4.500 | ~$0,60 |
+| **Gesamt** | | | **~$10–11** |
 
 **Sparpotenzial:**
-- Intraday-Trigger auf alle 2h reduzieren (`0 6-22/2 * * *`) → ~$5–8/Monat
+- Intraday-Trigger auf alle 2h reduzieren (`0 6-22/2 * * *`) → ~$5–6/Monat
 - Günstigeres Modell: im Agent-Node Anthropic durch OpenAI ersetzen, Rest bleibt gleich
 
 | Modell | Input | Output | ~Kosten/Monat |
 |--------|-------|--------|---------------|
-| Claude Sonnet 4.6 | $3/MTok | $15/MTok | ~$12 |
+| Claude Sonnet 4.6 | $3/MTok | $15/MTok | ~$11 |
 | GPT-4o | $2,50/MTok | $10/MTok | ~$8 |
 | GPT-4o mini | $0,15/MTok | $0,60/MTok | ~$0,50 |
 
