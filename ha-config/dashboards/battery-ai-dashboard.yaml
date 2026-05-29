@@ -86,6 +86,8 @@ views:
                 name: "Einspeise-Logik"
               - entity: input_number.min_soc_einspeisen
                 name: "Min. SoC Einspeisen"
+              - entity: input_select.intraday_frequenz
+                name: "Intraday Häufigkeit"
               - entity: input_number.manueller_preisschwellwert
                 name: "Manueller Schwellwert (0 = KI)"
 

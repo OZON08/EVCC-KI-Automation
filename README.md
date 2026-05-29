@@ -72,6 +72,7 @@ Zusätzlich laufen:
 | `input_boolean.einspeise_logik_aktiv` | Schalter | Einspeise-Logik (optional) |
 | `input_number.manueller_preisschwellwert` | Zahl | Override (0 = KI übernimmt) |
 | `input_number.min_soc_einspeisen` | Zahl | Minimaler SoC für Einspeisen (10–50%, default 30%) |
+| `input_select.intraday_frequenz` | Auswahl | Intraday-Häufigkeit: 1h / 2h / 3h / 6h (default 1h) |
 | `sensor.battery_charge_threshold` | Sensor | Aktueller Schwellwert + Claude-Begründung (Daily) |
 | `sensor.battery_intraday_adjustment` | Sensor | Intraday-Aktion + Einspeise-Status + Begründung |
 
@@ -203,3 +204,18 @@ Wiederkehrende Verbrauchsspitzen (z.B. Wärmepumpe 7–9 Uhr) aus InfluxDB erken
 - Integration in Daily Optimizer (24h-Profil) + Intraday Adjuster (nächste 6h)
 - Timezone-Offset dynamisch via `getTimezoneOffset()`
 - Spec: `docs/superpowers/specs/2026-05-29-phase8-stundliche-lastmuster.md`
+
+## Phase 9 – Intraday Frequenz konfigurierbar ✅ Live
+
+Häufigkeit des Intraday Adjusters über HA-Dropdown einstellbar (1h / 2h / 3h / 6h).
+
+- Cron-Trigger bleibt stündlich – Skip-Logik im Workflow verhindert Claude-Aufruf wenn nicht im Intervall
+- Keine API-Kosten für übersprungene Läufe
+- Bei 2h: ~$5–6/Monat statt ~$10–11/Monat
+
+| Frequenz | Läufe/Tag | Läufe/Monat | ~Kosten/Monat |
+|----------|-----------|-------------|---------------|
+| 1h (default) | 17 | 510 | ~$11 |
+| 2h | 9 | 270 | ~$6 |
+| 3h | 6 | 180 | ~$4 |
+| 6h | 3 | 90 | ~$2 |
