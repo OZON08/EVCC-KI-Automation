@@ -1,0 +1,10 @@
+input_select:
+  intraday_frequenz:
+    name: "Intraday Häufigkeit"
+    icon: mdi:timer-outline
+    options:
+      - "1h"
+      - "2h"
+      - "3h"
+      - "6h"
+    initial: "1h"
