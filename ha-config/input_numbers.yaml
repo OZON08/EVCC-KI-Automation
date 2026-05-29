@@ -11,3 +11,12 @@ input_number:
     step: 0.1
     initial: 0
     mode: slider
+  min_soc_einspeisen:
+    name: "Min. SoC Einspeisen"
+    icon: mdi:battery-arrow-down
+    unit_of_measurement: "%"
+    min: 10
+    max: 50
+    step: 5
+    initial: 30
+    mode: slider
