@@ -161,61 +161,41 @@ Pro Lauf ca. 4.500 Input- + 400 Output-Tokens (System-Prompt + MCP-Responses von
 
 GPT-4o mini ist am günstigsten, Reasoning-Qualität bei Energieoptimierung aber ungetestet.
 
-## Phase 7 – Ersparnis-Tracking (geplant)
+## Phase 5 – Einspeise-Logik (geplant)
 
-Berechnet wie viel die KI-Steuerung im Vergleich zu unoptimiertem Laden einspart.
+Batterie ins Netz entladen wenn Überschuss prognostiziert ist (Solar + SoC deckt Restbedarf) und Tibber-Preis die Einspeisevergütung übertrifft. Integration in Intraday Adjuster.
 
-**Logik:**
-```
-Tatsächliche Kosten = Σ (Energie geladen in Slot × Tibber-Preis in dem Slot)
-Referenzkosten      = gleiche Energie × Tagesdurchschnittspreis
-Ersparnis           = Referenzkosten − Tatsächliche Kosten
-```
-
-**Datenquellen (InfluxDB):**
-- `batteryGridEnergy` oder `batteryPower` (Wh aus Netz geladen, pro Slot)
-- `tariffGrid` (Tibber-Preis zum jeweiligen Zeitpunkt)
-- Tagesdurchschnitt aus `tariffGrid` als Referenz
-
-**Neuer n8n-Workflow: `savings-tracker.json`**
-- Trigger: stündlich (kumuliert Stundenwert), täglich 23:55 (Tagesabschluss), monatlich 1. um 00:05
-- InfluxDB: Netz-Ladeenergie + Preise der letzten Stunde/Tag/Monat per `JOIN` oder parallele Queries
-- Code-Node: Ersparnis berechnen
-- Ergebnis → HA-Sensoren
-
-**Neue HA Entities:**
-
-| Entity | Inhalt |
-|--------|--------|
-| `sensor.battery_ai_savings_hour` | Ersparnis letzte Stunde (EUR) |
-| `sensor.battery_ai_savings_today` | Ersparnis heute kumuliert (EUR) |
-| `sensor.battery_ai_savings_month` | Ersparnis aktueller Monat (EUR) |
-| `sensor.battery_ai_savings_total` | Gesamtersparnis seit Start (EUR) |
-
-**Dashboard-Erweiterung:** Karte "KI-Ersparnis" mit Stunden/Tages/Monatswerten und Verlaufsgraph.
+- Claude entscheidet zusätzlich: `discharge_action = enable|disable`
+- Neue HA Entity: `input_number.min_soc_einspeisen` (10–50%, default 30%, via Dashboard-Slider)
+- Spec: `docs/superpowers/specs/2026-05-28-phase5-einspeise-logik.md`
 
 ## Phase 6 – Token-Tracking & Kostenübersicht (geplant)
 
-Token-Verbrauch und API-Kosten pro Lauf erfassen und im Dashboard anzeigen.
+Token-Verbrauch und API-Kosten pro Claude-Aufruf in InfluxDB speichern, täglich/monatlich aggregieren.
 
-**Umsetzung:**
-- n8n AI Agent Node gibt nach jedem Lauf `tokenUsage` zurück (`inputTokens`, `outputTokens`)
-- Code-Node berechnet Kosten: `(inputTokens / 1_000_000 * 3) + (outputTokens / 1_000_000 * 15)`
-- Kumulierte Monatstkosten in HA-Sensor speichern
+- `tokenUsage` aus Agent-Output → InfluxDB `ai_costs` Zeitreihe
+- Daily Optimizer aggregiert täglich → HA-Sensoren
+- Spec: `docs/superpowers/specs/2026-05-28-phase6-token-tracking.md`
 
-**Neue HA Entities:**
+**Neue HA Entities:** `sensor.battery_ai_tokens_last_run`, `sensor.battery_ai_cost_today`, `sensor.battery_ai_cost_month`
 
-| Entity | Inhalt |
-|--------|--------|
-| `sensor.battery_ai_tokens_last_run` | Input + Output Tokens des letzten Laufs |
-| `sensor.battery_ai_cost_today` | Kosten heute in USD (kumuliert) |
-| `sensor.battery_ai_cost_month` | Kosten aktueller Monat in USD (kumuliert) |
+## Phase 7 – Ersparnis-Tracking (geplant)
 
-**Dashboard-Erweiterung:** Neue Karte "API-Kosten" mit heutigem Verbrauch, Monatssumme und Verlaufsgraph.
+Täglich 23:55 berechnet `savings-tracker.json` die KI-gesteuerte Ersparnis vs. Tagesdurchschnittspreis.
 
-## Phase 5 – Einspeise-Logik (optional)
+```
+Ersparnis = Σ (Energie geladen × Tagesdurchschnitt) − Σ (Energie geladen × tatsächlicher Slot-Preis)
+```
 
-Batterie aktiv entladen wenn Tibber-Preis hoch genug:
-- Einspeise-Schwellwert berechnen (Tibber-Preis > Einspeisevergütung 6,7 ct + Puffer)
-- `batterydischargecontrol` in Daily Optimizer integrieren
-- HA-Schalter `einspeise_logik_aktiv` bereits verdrahtet
+- Spec: `docs/superpowers/specs/2026-05-28-phase7-ersparnis-tracking.md`
+
+**Neue HA Entities:** `sensor.battery_ai_savings_today`, `sensor.battery_ai_savings_month`
+
+## Phase 8 – Stündliche Lastmustererkennung (geplant)
+
+Wiederkehrende Verbrauchsspitzen (z.B. Wärmepumpe 7–9 Uhr) aus InfluxDB erkennen und Claude als stündliches Lastprofil übergeben. Claude berechnet Netto-Bedarf (Lastprofil − PV-Prognose) und plant SoC-Reserve vorausschauend.
+
+- `homePower GROUP BY time(1h)` der letzten 28 Tage → Ø-Verbrauch pro Stunde
+- Integration in Daily Optimizer (24h-Profil) + Intraday Adjuster (nächste 6h)
+- Timezone-Offset dynamisch via `getTimezoneOffset()`
+- Spec: `docs/superpowers/specs/2026-05-29-phase8-stundliche-lastmuster.md`
