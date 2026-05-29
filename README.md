@@ -161,13 +161,13 @@ Pro Lauf ca. 4.500 Input- + 400 Output-Tokens (System-Prompt + MCP-Responses von
 
 GPT-4o mini ist am günstigsten, Reasoning-Qualität bei Energieoptimierung aber ungetestet.
 
-## Phase 5 – Einspeise-Logik (geplant)
+## Phase 5 – Einspeise-Logik ✅ Live
 
-Batterie ins Netz entladen wenn Überschuss prognostiziert ist (Solar + SoC deckt Restbedarf) und Tibber-Preis die Einspeisevergütung übertrifft. Integration in Intraday Adjuster.
+Batterie ins Netz entladen wenn Überschuss prognostiziert (Solar + SoC deckt Restbedarf) und Tibber-Preis > Einspeisevergütung. In Intraday Adjuster integriert.
 
-- Claude entscheidet zusätzlich: `discharge_action = enable|disable`
-- Neue HA Entity: `input_number.min_soc_einspeisen` (10–50%, default 30%, via Dashboard-Slider)
-- Spec: `docs/superpowers/specs/2026-05-28-phase5-einspeise-logik.md`
+- Claude entscheidet: `discharge_action = enable|disable`
+- Neue HA Entity: `input_number.min_soc_einspeisen` (10–50%, default 30%)
+- Dashboard: Slider für Min-SoC, Einspeise-Status in Intraday-Karte
 
 ## Phase 6 – Token-Tracking & Kostenübersicht (geplant)
 
