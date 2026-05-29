@@ -75,6 +75,9 @@ Zusätzlich laufen:
 | `input_select.intraday_frequenz` | Auswahl | Intraday-Häufigkeit: 1h / 2h / 3h / 6h (default 1h) |
 | `sensor.battery_charge_threshold` | Sensor | Aktueller Schwellwert + Claude-Begründung (Daily) |
 | `sensor.battery_intraday_adjustment` | Sensor | Intraday-Aktion + Einspeise-Status + Begründung |
+| `sensor.battery_ai_tokens_last_run` | Sensor | Kosten + Tokens letzter Claude-Aufruf |
+| `sensor.battery_ai_cost_today` | Sensor | API-Kosten heute kumuliert (USD) |
+| `sensor.battery_ai_cost_month` | Sensor | API-Kosten Monat kumuliert (USD) |
 
 ## Setup-Notizen
 
@@ -174,13 +177,13 @@ Batterie ins Netz entladen wenn Überschuss prognostiziert (Solar + SoC deckt Re
 - Neue HA Entity: `input_number.min_soc_einspeisen` (10–50%, default 30%)
 - Dashboard: Slider für Min-SoC, Einspeise-Status in Intraday-Karte
 
-## Phase 6 – Token-Tracking & Kostenübersicht (geplant)
+## Phase 6 – Token-Tracking & Kostenübersicht ✅ Live
 
-Token-Verbrauch und API-Kosten pro Claude-Aufruf in InfluxDB speichern, täglich/monatlich aggregieren.
+Token-Verbrauch und API-Kosten jedes Claude-Aufrufs in InfluxDB gespeichert, täglich/monatlich aggregiert.
 
-- `tokenUsage` aus Agent-Output → InfluxDB `ai_costs` Zeitreihe
-- Daily Optimizer aggregiert täglich → HA-Sensoren
-- Spec: `docs/superpowers/specs/2026-05-28-phase6-token-tracking.md`
+- `tokenUsage` aus Agent-Output → InfluxDB `ai_costs` Zeitreihe (Tag: `workflow=intraday|daily`)
+- Daily Optimizer aggregiert täglich Tages- und Monatssummen → HA-Sensoren
+- Fallback-Schätzung wenn `tokenUsage` nicht verfügbar: 5.000/450 Tokens (Intraday), 4.500/500 (Daily)
 
 **Neue HA Entities:** `sensor.battery_ai_tokens_last_run`, `sensor.battery_ai_cost_today`, `sensor.battery_ai_cost_month`
 

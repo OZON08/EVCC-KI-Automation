@@ -91,6 +91,35 @@ views:
               - entity: input_number.manueller_preisschwellwert
                 name: "Manueller Schwellwert (0 = KI)"
 
+          # API-Kosten
+          - type: entities
+            title: "API-Kosten (Claude)"
+            entities:
+              - entity: sensor.battery_ai_tokens_last_run
+                name: "Letzter Lauf (USD)"
+                icon: mdi:currency-usd
+              - type: attribute
+                entity: sensor.battery_ai_tokens_last_run
+                attribute: input_tokens
+                name: "Input-Tokens"
+                icon: mdi:import
+              - type: attribute
+                entity: sensor.battery_ai_tokens_last_run
+                attribute: output_tokens
+                name: "Output-Tokens"
+                icon: mdi:export
+              - type: attribute
+                entity: sensor.battery_ai_tokens_last_run
+                attribute: workflow
+                name: "Workflow"
+                icon: mdi:cog
+              - entity: sensor.battery_ai_cost_today
+                name: "Heute (USD)"
+                icon: mdi:calendar-today
+              - entity: sensor.battery_ai_cost_month
+                name: "Dieser Monat (USD)"
+                icon: mdi:calendar-month
+
           # Tibber-Preise (falls Tibber-Integration in HA vorhanden)
           - type: custom:tibber-card
             title: "Tibber Preise heute/morgen"
