@@ -41,10 +41,17 @@ const todayWeekday = new Date().getDay();
 const byHour = {};
 for (let h = 0; h < 24; h++) byHour[h] = [];
 
+// Dynamischer Timezone-Offset (funktioniert für CET/CEST automatisch)
+const offsetHours = -new Date().getTimezoneOffset() / 60;
+
 series
-  .filter(([time]) => new Date(time).getDay() === todayWeekday)
+  .filter(([time]) => {
+    const local = new Date(new Date(time).getTime() + offsetHours * 3600000);
+    return local.getDay() === todayWeekday;
+  })
   .forEach(([time, kwh]) => {
-    const hour = (new Date(time).getUTCHours() + 2) % 24; // UTC+2 (CEST) – ggf. auf UTC+1 anpassen
+    const local = new Date(new Date(time).getTime() + offsetHours * 3600000);
+    const hour = local.getHours();
     if (kwh > 0) byHour[hour].push(kwh);
   });
 
@@ -93,9 +100,23 @@ Plane die Ladestrategie so dass SoC rechtzeitig ausreicht:
 
 ## PV-Prognose stündlich
 
-evcc MCP `getState` liefert `forecast.solar`. Falls stündliche Aufschlüsselung nicht vorhanden:
-- Tagesprognose (kWh) gleichmäßig auf 6–20 Uhr verteilen (14 Stunden)
-- Claude-Prompt-Hinweis: "Stündliche PV-Prognose nicht verfügbar, Schätzung: X kWh gleichmäßig auf 6–20 Uhr"
+evcc MCP `getState` liefert `forecast.solar`. Die Struktur muss beim Implementieren geprüft werden:
+
+```
+Prüfen ob vorhanden:
+  forecast.solar.tomorrow.slots[]  → stündliche Werte (bevorzugt)
+  forecast.solar.today.slots[]     → stündliche Werte heute
+
+Falls slots vorhanden:
+  → direkt als stündliche PV-Prognose verwenden
+
+Falls nur Tageswert (forecast.solar.tomorrow.energy in Wh):
+  → Fallback: Energie gleichmäßig auf 6–20 Uhr verteilen (÷ 14 Stunden)
+  → Claude-Prompt-Hinweis: "Stündliche PV-Prognose nicht verfügbar,
+     Schätzung: X kWh gleichmäßig auf 6–20 Uhr verteilt"
+```
+
+**Implementierungshinweis:** Claude im Prompt anweisen die Struktur von `forecast.solar` zu prüfen und `slots` zu bevorzugen. Bekannt aus bisherigem Code: `forecast.solar.tomorrow.energy` existiert (Wh → ÷1000 = kWh). Ob `slots` verfügbar ist muss mit echtem MCP-Aufruf verifiziert werden.
 
 ## Wichtige Einschränkung: Intraday vs. Daily
 
