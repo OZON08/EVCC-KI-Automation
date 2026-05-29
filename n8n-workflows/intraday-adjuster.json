@@ -326,6 +326,63 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [2240, 80],
       "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "jsCode": "const usage = $('Claude Sonnet + evcc MCP').first()?.json?.tokenUsage ?? {};\nconst inputTokens = usage.inputTokens ?? usage.prompt_tokens ?? 5000;\nconst outputTokens = usage.outputTokens ?? usage.completion_tokens ?? 450;\nconst cost_usd = (inputTokens / 1000000 * 3) + (outputTokens / 1000000 * 15);\nconst costRounded = Math.round(cost_usd * 100000) / 100000;\nreturn [{ json: {\n  workflow: 'intraday',\n  input_tokens: inputTokens,\n  output_tokens: outputTokens,\n  cost_usd: costRounded,\n  timestamp: new Date().toISOString(),\n  line_protocol: 'ai_costs,workflow=intraday input_tokens=' + inputTokens + 'i,output_tokens=' + outputTokens + 'i,cost_usd=' + costRounded\n}}];"
+      },
+      "id": "token-kosten-intraday",
+      "name": "Token: Kosten berechnen",
+      "type": "n8n-nodes-base.code",
+      "position": [2016, 240],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://a0d7b954-influxdb:8086/write?db=evcc",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "text/plain",
+        "body": "={{ $json.line_protocol }}",
+        "options": {}
+      },
+      "id": "influxdb-token-write-intraday",
+      "name": "InfluxDB: Token-Kosten schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2240, 160],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "r61FJRKq9t50s9A7",
+          "name": "InfluxDB evcc"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://homeassistant:8123/api/states/sensor.battery_ai_tokens_last_run",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"state\": String($json.cost_usd), \"attributes\": { \"input_tokens\": $json.input_tokens, \"output_tokens\": $json.output_tokens, \"workflow\": $json.workflow, \"timestamp\": $json.timestamp, \"unit_of_measurement\": \"USD\", \"friendly_name\": \"KI Tokens letzter Lauf\" } } }}",
+        "options": {}
+      },
+      "id": "ha-token-status-intraday",
+      "name": "HA: Token-Status aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2240, 320],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -484,6 +541,27 @@
           },
           {
             "node": "Einspeisen aktivieren?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Token: Kosten berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token: Kosten berechnen": {
+      "main": [
+        [
+          {
+            "node": "InfluxDB: Token-Kosten schreiben",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HA: Token-Status aktualisieren",
             "type": "main",
             "index": 0
           }
