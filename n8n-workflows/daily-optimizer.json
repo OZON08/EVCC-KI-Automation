@@ -224,6 +224,148 @@
           "name": "Home Assistant Token"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "const usage = $('Claude Sonnet + evcc MCP').first()?.json?.tokenUsage ?? {};\nconst inputTokens = usage.inputTokens ?? usage.prompt_tokens ?? 4500;\nconst outputTokens = usage.outputTokens ?? usage.completion_tokens ?? 500;\nconst cost_usd = (inputTokens / 1000000 * 3) + (outputTokens / 1000000 * 15);\nconst costRounded = Math.round(cost_usd * 100000) / 100000;\nreturn [{ json: {\n  workflow: 'daily',\n  input_tokens: inputTokens,\n  output_tokens: outputTokens,\n  cost_usd: costRounded,\n  timestamp: new Date().toISOString(),\n  line_protocol: 'ai_costs,workflow=daily input_tokens=' + inputTokens + 'i,output_tokens=' + outputTokens + 'i,cost_usd=' + costRounded\n}}];"
+      },
+      "id": "token-kosten-daily",
+      "name": "Token: Kosten berechnen",
+      "type": "n8n-nodes-base.code",
+      "position": [1760, 208],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://a0d7b954-influxdb:8086/write?db=evcc",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "text/plain",
+        "body": "={{ $json.line_protocol }}",
+        "options": {}
+      },
+      "id": "influxdb-token-write-daily",
+      "name": "InfluxDB: Token-Kosten schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1984, 80],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "r61FJRKq9t50s9A7",
+          "name": "InfluxDB evcc"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();\nconst monthUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();\nreturn [{ json: {\n  today_utc: todayUTC,\n  month_utc: monthUTC,\n  query_today: 'SELECT sum(\"cost_usd\") FROM \"ai_costs\" WHERE time >= \\'' + todayUTC + '\\'',\n  query_month: 'SELECT sum(\"cost_usd\") FROM \"ai_costs\" WHERE time >= \\'' + monthUTC + '\\''\n}}];"
+      },
+      "id": "aggregat-timestamps",
+      "name": "Aggregat-Timestamps",
+      "type": "n8n-nodes-base.code",
+      "position": [1984, 208],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "url": "http://a0d7b954-influxdb:8086/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "db", "value": "evcc" },
+            { "name": "q", "value": "={{ $json.query_today }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "influxdb-kosten-heute",
+      "name": "InfluxDB: Kosten heute",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2208, 208],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "r61FJRKq9t50s9A7",
+          "name": "InfluxDB evcc"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://a0d7b954-influxdb:8086/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "db", "value": "evcc" },
+            { "name": "q", "value": "={{ $('Aggregat-Timestamps').first().json.query_month }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "influxdb-kosten-monat",
+      "name": "InfluxDB: Kosten Monat",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2432, 208],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "r61FJRKq9t50s9A7",
+          "name": "InfluxDB evcc"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://homeassistant:8123/api/states/sensor.battery_ai_cost_today",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"state\": String(Math.round(($('InfluxDB: Kosten heute').first()?.json?.results?.[0]?.series?.[0]?.values?.[0]?.[1] ?? 0) * 10000) / 10000), \"attributes\": { \"unit_of_measurement\": \"USD\", \"friendly_name\": \"KI API-Kosten heute\" } } }}",
+        "options": {}
+      },
+      "id": "ha-kosten-heute",
+      "name": "HA: Kosten heute aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2656, 208],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://homeassistant:8123/api/states/sensor.battery_ai_cost_month",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"state\": String(Math.round(($('InfluxDB: Kosten Monat').first()?.json?.results?.[0]?.series?.[0]?.values?.[0]?.[1] ?? 0) * 10000) / 10000), \"attributes\": { \"unit_of_measurement\": \"USD\", \"friendly_name\": \"KI API-Kosten Monat\" } } }}",
+        "options": {}
+      },
+      "id": "ha-kosten-monat",
+      "name": "HA: Kosten Monat aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2880, 208],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -337,6 +479,37 @@
           }
         ]
       ]
+    },
+    "HA: Status aktualisieren": {
+      "main": [[
+        { "node": "Token: Kosten berechnen", "type": "main", "index": 0 }
+      ]]
+    },
+    "Token: Kosten berechnen": {
+      "main": [[
+        { "node": "InfluxDB: Token-Kosten schreiben", "type": "main", "index": 0 },
+        { "node": "Aggregat-Timestamps", "type": "main", "index": 0 }
+      ]]
+    },
+    "Aggregat-Timestamps": {
+      "main": [[
+        { "node": "InfluxDB: Kosten heute", "type": "main", "index": 0 }
+      ]]
+    },
+    "InfluxDB: Kosten heute": {
+      "main": [[
+        { "node": "InfluxDB: Kosten Monat", "type": "main", "index": 0 }
+      ]]
+    },
+    "InfluxDB: Kosten Monat": {
+      "main": [[
+        { "node": "HA: Kosten heute aktualisieren", "type": "main", "index": 0 }
+      ]]
+    },
+    "HA: Kosten heute aktualisieren": {
+      "main": [[
+        { "node": "HA: Kosten Monat aktualisieren", "type": "main", "index": 0 }
+      ]]
     }
   },
   "active": false,
