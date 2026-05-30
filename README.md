@@ -25,8 +25,8 @@ Zusätzlich laufen:
 |------------|-------|---------|
 | **n8n** | Orchestrator (läuft als HA-Addon) | `http://homeassistant:8081` (intern) |
 | **Claude Sonnet** (`claude-sonnet-4-6`) | KI-Entscheidungsmotor via n8n AI Agent | Anthropic API |
-| **evcc** | Batteriesteuerung via REST API + MCP | `http://192.168.1.8:7070` |
-| **evcc MCP** | Tool-Interface für Claude (experimental) | `http://192.168.1.8:7070/mcp` |
+| **evcc** | Batteriesteuerung via REST API + MCP | `http://<EVCC_IP>:7070` |
+| **evcc MCP** | Tool-Interface für Claude (experimental) | `http://<EVCC_IP>:7070/mcp` |
 | **RCT Power** | Hausbatterie (7,6 kWh, ~7 kW) | via evcc |
 | **Tibber** | Dynamische Strompreise (15-min-Raster) | via evcc `forecast.grid` |
 | **InfluxDB** | Verbrauchshistorie | `http://a0d7b954-influxdb:8086/` db=`evcc` |
@@ -173,7 +173,7 @@ Für jeden Workflow in `n8n-workflows/`:
 
 1. n8n öffnen → **Workflows → Neuen Workflow importieren**
 2. JSON-Datei auswählen
-3. Nach dem Import: **MCP-Node** (`evcc MCP Tools`) anklicken → `endpointUrl` auf `http://192.168.1.8:7070/mcp` setzen (wird beim Import zurückgesetzt)
+3. Nach dem Import: **MCP-Node** (`evcc MCP Tools`) anklicken → `endpointUrl` auf `http://<EVCC_IP>:7070/mcp` setzen (wird beim Import zurückgesetzt)
 4. Alle Credentials zuweisen (bei jedem HTTP- und AI-Node prüfen)
 
 **Reihenfolge:**
