@@ -113,7 +113,42 @@
     },
     {
       "parameters": {
-        "jsCode": "const data = $input.first()?.json ?? {};\nconst series = data?.results?.[0]?.series?.[0]?.values ?? [];\n\n// Morgen's Wochentag (0=So, 1=Mo, ..., 6=Sa)\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst targetWeekday = tomorrow.getDay();\n\n// Gleicher Wochentag, Werte > 1 kWh (vollständige Tage)\nconst sameWeekday = series\n  .filter(([time, kwh]) => new Date(time).getDay() === targetWeekday && kwh > 1)\n  .map(([, kwh]) => kwh);\n\n// Fallback: alle Tage mit Daten\nconst allDays = series\n  .filter(([, kwh]) => kwh > 1)\n  .map(([, kwh]) => kwh);\n\nconst values = sameWeekday.length >= 2 ? sameWeekday : allDays;\nconst avg = values.length > 0\n  ? values.reduce((a, b) => a + b, 0) / values.length\n  : 10;\n\nconst source = sameWeekday.length >= 2\n  ? 'gleicher Wochentag'\n  : allDays.length > 0\n    ? 'Gesamtdurchschnitt'\n    : 'Fallback';\n\nconst avgRounded = Math.round(avg * 10) / 10;\nconst dataDays = sameWeekday.length || allDays.length;\n\nconst prompt = 'Analysiere den aktuellen Zustand der Hausbatterie und optimiere die Ladekosten fuer morgen.\\n\\nVorgehen:\\n1. Rufe getState auf um SoC, Solar-Prognose und aktuelle Situation zu sehen\\n2. Rufe getTariffInfo mit type=grid auf um die Tibber-Preise fuer morgen zu sehen\\n3. Berechne den optimalen Preisschwellwert:\\n   - Verfuegbare Kapazitaet = (1 - SoC/100) * 7.6 kWh\\n   - Energiebedarf = ' + avgRounded + ' kWh (Verbrauchsdaten: ' + source + ', ' + dataDays + ' Messtage) - Solar-Prognose morgen - verfuegbare Kapazitaet\\n   - Wenn Bedarf <= 0: Schwellwert = 0 (kein Netzladen noetig, Solar reicht)\\n   - Wenn Bedarf > 0: Guenstigste Preis-Slots fuer morgen waehlen bis Bedarf gedeckt, Schwellwert = hoechster gewaehlter Preis * 1.05\\n4. Setze den Schwellwert mit setBatteryGridChargeLimit (Wert in EUR/kWh, also ct/100)\\n   - Beispiel: 8.5 ct/kWh = 0.085 EUR/kWh\\n   - Wenn Schwellwert = 0: removeBatteryGridChargeLimit aufrufen\\n5. Antworte mit einer kurzen deutschen Zusammenfassung:\\n   { \"threshold_ct\": <Zahl>, \"reasoning\": \"<Begruendung>\" }';\n\nreturn [{ json: {\n  avg_consumption_kwh: avgRounded,\n  data_days: dataDays,\n  source,\n  prompt\n}}];"
+        "url": "http://a0d7b954-influxdb:8086/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "db",
+              "value": "evcc"
+            },
+            {
+              "name": "q",
+              "value": "SELECT integral(\"value\") / 3600000 FROM \"homePower\" WHERE time > now() - 28d GROUP BY time(1h) fill(0)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "influxdb-lastprofil-daily",
+      "name": "InfluxDB: Lastprofil abfragen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        784,
+        80
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "r61FJRKq9t50s9A7",
+          "name": "InfluxDB evcc"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('InfluxDB: Verbrauch abfragen').first()?.json ?? {};\nconst profileRaw = $input.first()?.json ?? {};\nconst series = data?.results?.[0]?.series?.[0]?.values ?? [];\n\n// Morgen's Wochentag (0=So, 1=Mo, ..., 6=Sa)\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst targetWeekday = tomorrow.getDay();\n\n// Gleicher Wochentag, Werte > 1 kWh (vollständige Tage)\nconst sameWeekday = series\n  .filter(([time, kwh]) => new Date(time).getDay() === targetWeekday && kwh > 1)\n  .map(([, kwh]) => kwh);\n\n// Fallback: alle Tage mit Daten\nconst allDays = series\n  .filter(([, kwh]) => kwh > 1)\n  .map(([, kwh]) => kwh);\n\nconst values = sameWeekday.length >= 2 ? sameWeekday : allDays;\nconst avg = values.length > 0\n  ? values.reduce((a, b) => a + b, 0) / values.length\n  : 10;\n\nconst source = sameWeekday.length >= 2\n  ? 'gleicher Wochentag'\n  : allDays.length > 0\n    ? 'Gesamtdurchschnitt'\n    : 'Fallback';\n\nconst avgRounded = Math.round(avg * 10) / 10;\nconst dataDays = sameWeekday.length || allDays.length;\n\n// Lastprofil berechnen (gleicher Wochentag wie morgen, 28d)\nconst profileSeries = profileRaw?.results?.[0]?.series?.[0]?.values ?? [];\nconst offsetHours = -new Date().getTimezoneOffset() / 60;\nconst byHour = {};\nfor (let h = 0; h < 24; h++) byHour[h] = [];\n\nprofileSeries\n  .filter(([time]) => {\n    const local = new Date(new Date(time).getTime() + offsetHours * 3600000);\n    return local.getDay() === targetWeekday;\n  })\n  .forEach(([time, kwh]) => {\n    const local = new Date(new Date(time).getTime() + offsetHours * 3600000);\n    const hour = local.getHours();\n    if (kwh !== null && kwh > 0) byHour[hour].push(kwh);\n  });\n\nconst profile = [];\nfor (let h = 0; h < 24; h++) {\n  const vals = byHour[h];\n  profile.push({\n    hour: h,\n    avg_kwh: vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 100) / 100 : 0,\n    samples: vals.length\n  });\n}\n\nconst profileDays = Math.max(...profile.map(p => p.samples), 0);\nconst hasProfile = profileDays >= 4;\n\nconst profileSection = hasProfile\n  ? '\\n\\nStündliches Verbrauchsprofil (gleicher Wochentag, ' + profileDays + ' Messtage, 28d-Durchschnitt):\\n' +\n    profile.map(p => p.hour.toString().padStart(2, '0') + ':00: ' + p.avg_kwh + ' kWh').join(' | ') +\n    '\\n\\nBerechne pro Stunde den Netto-Bedarf (Verbrauch minus PV-Prognose). Stunden mit Netto-Bedarf > 0 brauchen Batterie-Reserve. Plane die Ladestrategie so dass der SoC zu Lastspitzen ausreicht.'\n  : '';\n\nconst prompt = 'Analysiere den aktuellen Zustand der Hausbatterie und optimiere die Ladekosten fuer morgen.\\n\\nVorgehen:\\n1. Rufe getState auf um SoC, Solar-Prognose und aktuelle Situation zu sehen\\n2. Rufe getTariffInfo mit type=grid auf um die Tibber-Preise fuer morgen zu sehen\\n3. Berechne den optimalen Preisschwellwert:\\n   - Verfuegbare Kapazitaet = (1 - SoC/100) * 7.6 kWh\\n   - Energiebedarf = ' + avgRounded + ' kWh (Verbrauchsdaten: ' + source + ', ' + dataDays + ' Messtage) - Solar-Prognose morgen - verfuegbare Kapazitaet\\n   - Wenn Bedarf <= 0: Schwellwert = 0 (kein Netzladen noetig, Solar reicht)\\n   - Wenn Bedarf > 0: Guenstigste Preis-Slots fuer morgen waehlen bis Bedarf gedeckt, Schwellwert = hoechster gewaehlter Preis * 1.05\\n4. Setze den Schwellwert mit setBatteryGridChargeLimit (Wert in EUR/kWh, also ct/100)\\n   - Beispiel: 8.5 ct/kWh = 0.085 EUR/kWh\\n   - Wenn Schwellwert = 0: removeBatteryGridChargeLimit aufrufen\\n5. Antworte mit einer kurzen deutschen Zusammenfassung:\\n   { \"threshold_ct\": <Zahl>, \"reasoning\": \"<Begruendung>\" }' + profileSection;\n\nreturn [{ json: {\n  avg_consumption_kwh: avgRounded,\n  data_days: dataDays,\n  source,\n  prompt\n}}];"
       },
       "id": "33f8f8af-40ea-43c2-aaf0-d5b5affae010",
       "name": "Verbrauch berechnen",
@@ -232,7 +267,10 @@
       "id": "token-kosten-daily",
       "name": "Token: Kosten berechnen",
       "type": "n8n-nodes-base.code",
-      "position": [1760, 208],
+      "position": [
+        1760,
+        208
+      ],
       "typeVersion": 2
     },
     {
@@ -257,7 +295,10 @@
       "name": "InfluxDB: Token-Kosten schreiben",
       "type": "n8n-nodes-base.httpRequest",
       "onError": "continueRegularOutput",
-      "position": [1984, 80],
+      "position": [
+        1984,
+        80
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpBasicAuth": {
@@ -273,7 +314,10 @@
       "id": "aggregat-timestamps",
       "name": "Aggregat-Timestamps",
       "type": "n8n-nodes-base.code",
-      "position": [1984, 208],
+      "position": [
+        1984,
+        208
+      ],
       "typeVersion": 2
     },
     {
@@ -284,8 +328,14 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "db", "value": "evcc" },
-            { "name": "q", "value": "={{ $json.query_today }}" }
+            {
+              "name": "db",
+              "value": "evcc"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.query_today }}"
+            }
           ]
         },
         "options": {}
@@ -293,7 +343,10 @@
       "id": "influxdb-kosten-heute",
       "name": "InfluxDB: Kosten heute",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [2208, 208],
+      "position": [
+        2208,
+        208
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpBasicAuth": {
@@ -310,8 +363,14 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "db", "value": "evcc" },
-            { "name": "q", "value": "={{ $('Aggregat-Timestamps').first().json.query_month }}" }
+            {
+              "name": "db",
+              "value": "evcc"
+            },
+            {
+              "name": "q",
+              "value": "={{ $('Aggregat-Timestamps').first().json.query_month }}"
+            }
           ]
         },
         "options": {}
@@ -319,7 +378,10 @@
       "id": "influxdb-kosten-monat",
       "name": "InfluxDB: Kosten Monat",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [2432, 208],
+      "position": [
+        2432,
+        208
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpBasicAuth": {
@@ -342,7 +404,10 @@
       "id": "ha-kosten-heute",
       "name": "HA: Kosten heute aktualisieren",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [2656, 208],
+      "position": [
+        2656,
+        208
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpHeaderAuth": {
@@ -365,7 +430,10 @@
       "id": "ha-kosten-monat",
       "name": "HA: Kosten Monat aktualisieren",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [2880, 208],
+      "position": [
+        2880,
+        208
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpHeaderAuth": {
@@ -425,7 +493,7 @@
       "main": [
         [
           {
-            "node": "Verbrauch berechnen",
+            "node": "InfluxDB: Lastprofil abfragen",
             "type": "main",
             "index": 0
           }
@@ -488,35 +556,86 @@
       ]
     },
     "HA: Status aktualisieren": {
-      "main": [[
-        { "node": "Token: Kosten berechnen", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "Token: Kosten berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Token: Kosten berechnen": {
-      "main": [[
-        { "node": "InfluxDB: Token-Kosten schreiben", "type": "main", "index": 0 },
-        { "node": "Aggregat-Timestamps", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "InfluxDB: Token-Kosten schreiben",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Aggregat-Timestamps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Aggregat-Timestamps": {
-      "main": [[
-        { "node": "InfluxDB: Kosten heute", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "InfluxDB: Kosten heute",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "InfluxDB: Kosten heute": {
-      "main": [[
-        { "node": "InfluxDB: Kosten Monat", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "InfluxDB: Kosten Monat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "InfluxDB: Kosten Monat": {
-      "main": [[
-        { "node": "HA: Kosten heute aktualisieren", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "HA: Kosten heute aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "HA: Kosten heute aktualisieren": {
-      "main": [[
-        { "node": "HA: Kosten Monat aktualisieren", "type": "main", "index": 0 }
-      ]]
+      "main": [
+        [
+          {
+            "node": "HA: Kosten Monat aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "InfluxDB: Lastprofil abfragen": {
+      "main": [
+        [
+          {
+            "node": "Verbrauch berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
