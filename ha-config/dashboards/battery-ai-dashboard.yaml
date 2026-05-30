@@ -131,10 +131,6 @@ views:
                 name: "Dieser Monat (EUR)"
                 icon: mdi:piggy-bank-outline
 
-          # Tibber-Preise (falls Tibber-Integration in HA vorhanden)
-          - type: custom:tibber-card
-            title: "Tibber Preise heute/morgen"
-            # Benötigt tibber-card custom component
 
       - type: history-graph
         title: "Verlauf (letzte 24h)"
