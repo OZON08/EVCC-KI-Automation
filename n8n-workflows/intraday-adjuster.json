@@ -358,6 +358,7 @@
       "id": "influxdb-token-write-intraday",
       "name": "InfluxDB: Token-Kosten schreiben",
       "type": "n8n-nodes-base.httpRequest",
+      "onError": "continueRegularOutput",
       "position": [2240, 160],
       "typeVersion": 4.4,
       "credentials": {
