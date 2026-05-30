@@ -78,6 +78,8 @@ Zusätzlich laufen:
 | `sensor.battery_ai_tokens_last_run` | Sensor | Kosten + Tokens letzter Claude-Aufruf |
 | `sensor.battery_ai_cost_today` | Sensor | API-Kosten heute kumuliert (USD) |
 | `sensor.battery_ai_cost_month` | Sensor | API-Kosten Monat kumuliert (USD) |
+| `sensor.battery_ai_savings_today` | Sensor | KI-Ersparnis heute vs. Tagesdurchschnitt (EUR) |
+| `sensor.battery_ai_savings_month` | Sensor | KI-Ersparnis kumuliert Monat (EUR) |
 
 ## Setup-Notizen
 
@@ -187,7 +189,7 @@ Token-Verbrauch und API-Kosten jedes Claude-Aufrufs in InfluxDB gespeichert, tä
 
 **Neue HA Entities:** `sensor.battery_ai_tokens_last_run`, `sensor.battery_ai_cost_today`, `sensor.battery_ai_cost_month`
 
-## Phase 7 – Ersparnis-Tracking (geplant)
+## Phase 7 – Ersparnis-Tracking ✅ Live
 
 Täglich 23:55 berechnet `savings-tracker.json` die KI-gesteuerte Ersparnis vs. Tagesdurchschnittspreis.
 
@@ -195,7 +197,9 @@ Täglich 23:55 berechnet `savings-tracker.json` die KI-gesteuerte Ersparnis vs. 
 Ersparnis = Σ (Energie geladen × Tagesdurchschnitt) − Σ (Energie geladen × tatsächlicher Slot-Preis)
 ```
 
-- Spec: `docs/superpowers/specs/2026-05-28-phase7-ersparnis-tracking.md`
+- `batteryPower` + `tariffGrid` aus InfluxDB → stündliche Ersparnis pro Slot
+- Negative Slots (wenn Slot-Preis > Durchschnitt) werden auf 0 gekürzt
+- Tageswert in InfluxDB `battery_savings` gespeichert → Monatssumme aggregiert
 
 **Neue HA Entities:** `sensor.battery_ai_savings_today`, `sensor.battery_ai_savings_month`
 

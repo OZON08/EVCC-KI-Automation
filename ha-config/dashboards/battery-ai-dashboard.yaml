@@ -120,6 +120,17 @@ views:
                 name: "Dieser Monat (USD)"
                 icon: mdi:calendar-month
 
+          # KI-Ersparnis
+          - type: entities
+            title: "KI-Ersparnis"
+            entities:
+              - entity: sensor.battery_ai_savings_today
+                name: "Heute (EUR)"
+                icon: mdi:piggy-bank
+              - entity: sensor.battery_ai_savings_month
+                name: "Dieser Monat (EUR)"
+                icon: mdi:piggy-bank-outline
+
           # Tibber-Preise (falls Tibber-Integration in HA vorhanden)
           - type: custom:tibber-card
             title: "Tibber Preise heute/morgen"
