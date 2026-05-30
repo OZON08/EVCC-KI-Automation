@@ -347,7 +347,13 @@
         "contentType": "raw",
         "rawContentType": "text/plain",
         "body": "={{ $json.line_protocol }}",
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
       },
       "id": "influxdb-token-write-intraday",
       "name": "InfluxDB: Token-Kosten schreiben",
