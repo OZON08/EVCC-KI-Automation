@@ -4,18 +4,19 @@ KI-gesteuertes System zur kostenoptimierten Ladung und Entladung der Hausbatteri
 
 ## Wie es funktioniert
 
-Täglich um 14:00 Uhr (sobald Tibber die Preise für den nächsten Tag veröffentlicht) läuft der Daily Optimizer in n8n:
+Täglich um 14:00 Uhr läuft der Daily Optimizer in n8n:
 
-1. Prüft ob KI-Steuerung in Home Assistant aktiv ist
-2. Liest den **gemessenen Durchschnittsverbrauch** für den gleichen Wochentag aus InfluxDB (28 Tage, `homePower`)
-3. **Claude Sonnet** liest via evcc MCP: aktuellen SoC, Tibber-Preise (next 24h, 15-min-Raster), Solar-Prognose morgen
-4. Claude berechnet den optimalen Preisschwellwert und setzt ihn direkt in evcc
-5. evcc lädt die Batterie automatisch wann immer der Tibber-Preis unter dem Schwellwert liegt
+1. Liest den **gemessenen Durchschnittsverbrauch** und das **stündliche Lastprofil** aus InfluxDB (28 Tage, `homePower`)
+2. **Claude Sonnet** liest via evcc MCP: aktuellen SoC, Tibber-Preise (next 24h), Solar-Prognose morgen
+3. Claude berechnet den optimalen Preisschwellwert unter Berücksichtigung der stündlichen Lastspitzen
+4. Claude setzt den Schwellwert direkt in evcc
+5. evcc lädt die Batterie automatisch wenn der Tibber-Preis unter dem Schwellwert liegt
 6. n8n schreibt Ergebnis + Begründung nach Home Assistant
 
 Zusätzlich laufen:
-- **Intraday Adjuster** (stündlich 6–22 Uhr): passt Schwellwert tagsüber nach und entscheidet ob Batterie ins Netz einspeist
-- **Safety Monitor** (alle 15 min): überwacht SoC-Grenzen, deaktiviert Netzladen/Entladen bei Bedarf
+- **Intraday Adjuster** (stündlich 6–22 Uhr): passt Schwellwert tagsüber nach, entscheidet über Netzeinspeisung
+- **Savings Tracker** (täglich 23:55): berechnet KI-Ersparnis vs. Tagesdurchschnittspreis
+- **Safety Monitor** (alle 15 min): überwacht SoC-Grenzen
 - **HA Override Handler**: reagiert sofort auf HA-Schalter-Änderungen via Webhook
 
 ## Stack
@@ -31,40 +32,56 @@ Zusätzlich laufen:
 | **InfluxDB** | Verbrauchshistorie | `http://a0d7b954-influxdb:8086/` db=`evcc` |
 | **Home Assistant** | Dashboard, Schalter, Overrides | `http://homeassistant:8123` (intern) |
 
-## Status
+## Workflows
 
-| Workflow | Status | Trigger |
-|----------|--------|---------|
-| Daily Optimizer | ✅ Live | täglich 14:00 + sofort bei KI-Aktivierung |
-| Safety Monitor | ✅ Live | alle 15 Minuten |
-| HA Override Handler | ✅ Live | Webhook von HA-Schaltern |
-| Intraday Adjuster | ✅ Live | stündlich 6–22 Uhr (17×/Tag) |
+| Workflow | Trigger | Funktion |
+|----------|---------|---------|
+| Daily Optimizer | täglich 14:00 + sofort bei KI-Aktivierung | Preisschwellwert für morgen berechnen |
+| Intraday Adjuster | stündlich 6–22 Uhr (konfigurierbar) | Schwellwert tagsüber nachregeln, Einspeisung steuern |
+| Savings Tracker | täglich 23:55 | Ersparnis vs. Tagesdurchschnitt berechnen |
+| Safety Monitor | alle 15 Minuten | SoC-Grenzen überwachen |
+| HA Override Handler | Webhook von HA-Schaltern | Sofortreaktion auf manuelle Eingriffe |
+
+## Features
+
+| Feature | Beschreibung |
+|---------|-------------|
+| Preisoptimierung | Günstigste Tibber-Slots wählen, Schwellwert mit 5% Puffer setzen |
+| Intraday-Anpassung | Stündliche Korrektur bei PV- oder SoC-Abweichungen |
+| Einspeise-Logik | Batterie ins Netz entladen wenn Preis > 6,7 ct/kWh und SoC ausreichend |
+| Lastmustererkennung | Stündliches Verbrauchsprofil (28d, gleicher Wochentag) als Claude-Kontext |
+| Token-Tracking | API-Kosten pro Lauf in InfluxDB, täglich/monatlich aggregiert in HA |
+| Ersparnis-Tracking | Tägliche Kosteneinsparung vs. Tagesdurchschnittspreis in HA |
+| Frequenz-Kontrolle | Intraday-Häufigkeit per HA-Dropdown einstellbar (1h / 2h / 3h / 6h) |
+| Manuelle Overrides | KI abschaltbar, manueller Schwellwert, Min-SoC für Einspeisung |
 
 ## Projektstruktur
 
 ```
-├── docs/
-│   ├── setup-phase1.md              # Setup-Anleitung Phase 1
-│   └── superpowers/specs/
-│       └── 2026-05-25-battery-ai-design.md  # Design-Spec
 ├── n8n-workflows/
 │   ├── daily-optimizer.json         # Claude + evcc MCP + InfluxDB, täglich 14:00
+│   ├── intraday-adjuster.json       # Claude + evcc MCP + Preisstats, stündlich 6–22 Uhr
+│   ├── savings-tracker.json         # Ersparnis-Berechnung, täglich 23:55
 │   ├── safety-monitor.json          # Regelbasiert, alle 15 min
-│   ├── ha-override-handler.json     # Webhook-Handler, Sofortreaktion auf HA-Schalter
-│   └── intraday-adjuster.json       # Claude + evcc MCP + Preisstats, stündlich 6–22 Uhr
+│   └── ha-override-handler.json     # Webhook-Handler, Sofortreaktion auf HA-Schalter
 ├── ha-config/
 │   ├── input_booleans.yaml          # KI-Schalter, Einspeise-Schalter
 │   ├── input_numbers.yaml           # Manueller Schwellwert, Min-SoC Einspeisen
+│   ├── input_selects.yaml           # Intraday-Häufigkeit
 │   ├── rest_commands.yaml           # n8n Webhook-Aufruf von HA
 │   ├── automations/
 │   │   └── battery-ai-webhooks.yaml # Schalter → n8n Webhooks
 │   └── dashboards/
 │       └── battery-ai-dashboard.yaml
+├── docs/
+│   └── superpowers/specs/           # Design-Spezifikationen
 └── scripts/
     └── test-evcc-api.sh             # API-Test
 ```
 
 ## Home Assistant Entities
+
+### Manuelle Eingaben (vor Installation anlegen)
 
 | Entity | Typ | Funktion |
 |--------|-----|----------|
@@ -73,157 +90,194 @@ Zusätzlich laufen:
 | `input_number.manueller_preisschwellwert` | Zahl | Override (0 = KI übernimmt) |
 | `input_number.min_soc_einspeisen` | Zahl | Minimaler SoC für Einspeisen (10–50%, default 30%) |
 | `input_select.intraday_frequenz` | Auswahl | Intraday-Häufigkeit: 1h / 2h / 3h / 6h (default 1h) |
-| `sensor.battery_charge_threshold` | Sensor | Aktueller Schwellwert + Claude-Begründung (Daily) |
-| `sensor.battery_intraday_adjustment` | Sensor | Intraday-Aktion + Einspeise-Status + Begründung |
-| `sensor.battery_ai_tokens_last_run` | Sensor | Kosten + Tokens letzter Claude-Aufruf |
-| `sensor.battery_ai_cost_today` | Sensor | API-Kosten heute kumuliert (USD) |
-| `sensor.battery_ai_cost_month` | Sensor | API-Kosten Monat kumuliert (USD) |
-| `sensor.battery_ai_savings_today` | Sensor | KI-Ersparnis heute vs. Tagesdurchschnitt (EUR) |
-| `sensor.battery_ai_savings_month` | Sensor | KI-Ersparnis kumuliert Monat (EUR) |
 
-## Setup-Notizen
+### Sensoren (automatisch von n8n angelegt)
 
-### n8n Credentials
-| Name | Typ | Werte |
-|------|-----|-------|
-| `Home Assistant Token` | HTTP Header Auth | `Authorization: Bearer <HA_TOKEN>` |
+| Entity | Funktion |
+|--------|----------|
+| `sensor.battery_charge_threshold` | Aktueller Schwellwert + Claude-Begründung |
+| `sensor.battery_intraday_adjustment` | Intraday-Aktion + Einspeise-Status + Begründung |
+| `sensor.battery_ai_tokens_last_run` | Kosten + Tokens letzter Claude-Aufruf |
+| `sensor.battery_ai_cost_today` | API-Kosten heute kumuliert (USD) |
+| `sensor.battery_ai_cost_month` | API-Kosten Monat kumuliert (USD) |
+| `sensor.battery_ai_savings_today` | KI-Ersparnis heute vs. Tagesdurchschnitt (EUR) |
+| `sensor.battery_ai_savings_month` | KI-Ersparnis kumuliert Monat (EUR) |
+
+---
+
+## Installation
+
+### Voraussetzungen
+
+- Home Assistant mit installierten Add-ons: **n8n**, **InfluxDB**
+- **evcc** im lokalen Netz mit Tibber-Integration und RCT Power Anbindung
+- **Anthropic API Key** (console.anthropic.com)
+- evcc schreibt Messdaten nach InfluxDB (Datenbank: `evcc`, User: `evcc`)
+
+### Schritt 1: Home Assistant konfigurieren
+
+**1a. YAML-Dateien einbinden**
+
+In `configuration.yaml` folgende Includes ergänzen (falls nicht vorhanden):
+
+```yaml
+input_boolean: !include_dir_merge_named input_booleans/
+input_number: !include_dir_merge_named input_numbers/
+input_select: !include_dir_merge_named input_selects/
+rest_command: !include rest_commands.yaml
+```
+
+Die Dateien aus `ha-config/` in die entsprechenden HA-Konfigurationsordner kopieren.
+
+**1b. Automationen einrichten**
+
+Inhalt von `ha-config/automations/battery-ai-webhooks.yaml` in die HA-Automationen einfügen.
+
+**1c. Dashboard einrichten**
+
+`ha-config/dashboards/battery-ai-dashboard.yaml` als neues Lovelace-Dashboard einbinden.
+
+**1d. HA neu starten**
+
+> Wichtig: Nach YAML-Änderungen muss HA vollständig neu starten (kein YAML-Reload reicht für Input-Entities).
+
+Alternativ: Input-Entities manuell als Helfer anlegen unter **Einstellungen → Geräte & Dienste → Helfer**:
+
+| Typ | Name | Entity-ID | Optionen/Bereich |
+|-----|------|-----------|-----------------|
+| Schalter | KI-Batteriesteuerung | `ki_batteriesteuerung_aktiv` | – |
+| Schalter | Einspeise-Logik | `einspeise_logik_aktiv` | – |
+| Zahl | Manueller Preisschwellwert | `manueller_preisschwellwert` | 0–50, Schritt 0,1 |
+| Zahl | Min. SoC Einspeisen | `min_soc_einspeisen` | 10–50, Schritt 5, default 30 |
+| Auswahl | Intraday Häufigkeit | `intraday_frequenz` | 1h, 2h, 3h, 6h |
+
+---
+
+### Schritt 2: n8n Credentials anlegen
+
+In n8n unter **Einstellungen → Credentials** drei Credentials anlegen:
+
+| Name (exakt so) | Typ | Werte |
+|-----------------|-----|-------|
+| `Home Assistant Token` | HTTP Header Auth | Header: `Authorization`, Wert: `Bearer <LONG_LIVED_TOKEN>` |
 | `Anthropic – Claude Sonnet` | Anthropic API | API Key aus console.anthropic.com |
-| `InfluxDB evcc` | HTTP Basic Auth | User: `evcc`, Password: siehe HA-Addon-Config |
+| `InfluxDB evcc` | HTTP Basic Auth | User: `evcc`, Password: aus InfluxDB Add-on Konfiguration |
 
-### Wichtige Erkenntnisse
-- **evcc API**: offen ohne Auth im lokalen Netz
-- **evcc Tibber-Preise**: in `forecast.grid[]` (Wert in EUR → ×100 = ct), nicht `tariffGrid`
-- **evcc Solar-Prognose**: `forecast.solar.tomorrow.energy` (in Wh → ÷1000 = kWh)
-- **n8n als HA-Addon**: `.local` DNS nicht auflösbar im Container → `http://homeassistant:8123` für HA, `http://192.168.1.8:7070` für evcc
-- **n8n MCP Node**: `endpointUrl` Parameter wird beim JSON-Import nicht gesetzt → muss manuell eingetragen werden
-- **n8n Code-Node mit parallelen Inputs**: crasht mit `.item` → sequentiellen Flow und `.first()` verwenden
-- **n8n Template-Literals im Agent-Node**: `${variable}` wird nicht aufgelöst → Prompt im Code-Node per String-Konkatenation bauen, als `$json.prompt` übergeben
-- **n8n Regex für Claude-Antwort**: `[^{}]*` statt `[\s\S]*?` verwenden, sonst brechen `}` in Markdown die Extraktion
-- **HA → n8n Webhook**: `rest_command` URL = `http://homeassistant:8081/webhook/...` (n8n Addon intern); nach Änderung **HA-Neustart** nötig (kein YAML-Reload)
-- **n8n Execute Workflow**: Ziel-Workflow braucht `executeWorkflowTrigger` Node, sonst Fehler "Missing node to start execution"
+**HA Long-Lived Token erstellen:** HA → Profil → Sicherheit → Langlebige Zugriffstoken → Token erstellen.
 
-## Daily Optimizer – Entscheidungslogik
+---
+
+### Schritt 3: Workflows importieren
+
+Für jeden Workflow in `n8n-workflows/`:
+
+1. n8n öffnen → **Workflows → Neuen Workflow importieren**
+2. JSON-Datei auswählen
+3. Nach dem Import: **MCP-Node** (`evcc MCP Tools`) anklicken → `endpointUrl` auf `http://192.168.1.8:7070/mcp` setzen (wird beim Import zurückgesetzt)
+4. Alle Credentials zuweisen (bei jedem HTTP- und AI-Node prüfen)
+
+**Reihenfolge:**
+1. `safety-monitor.json`
+2. `ha-override-handler.json`
+3. `daily-optimizer.json`
+4. `intraday-adjuster.json`
+5. `savings-tracker.json`
+
+> Hinweis: `ha-override-handler.json` benötigt den Webhook-Pfad aus der HA-Automatisierung — sicherstellen dass die Webhook-IDs übereinstimmen.
+
+---
+
+### Schritt 4: Workflows aktivieren
+
+Jeden Workflow aktivieren (Toggle oben rechts in n8n). Empfohlene Reihenfolge:
+
+1. Safety Monitor aktivieren
+2. HA Override Handler aktivieren
+3. Daily Optimizer aktivieren → **manuell triggern** um ersten Schwellwert zu setzen
+4. Intraday Adjuster aktivieren
+5. Savings Tracker aktivieren
+
+**Erster Test:**
+- Daily Optimizer manuell triggern → in HA prüfen ob `sensor.battery_charge_threshold` einen Wert hat
+- KI-Schalter in HA auf **An** setzen → Intraday Adjuster sollte beim nächsten vollen Trigger laufen
+
+---
+
+### Schritt 5: Sensoren prüfen
+
+Nach dem ersten erfolgreichen Lauf erscheinen die Sensoren automatisch in HA. Im Dashboard sollten sichtbar sein:
+- Aktueller Preisschwellwert (ct/kWh)
+- Claude-Begründung
+- Intraday-Aktion (keep / update / remove)
+- API-Kosten letzter Lauf
+
+---
+
+## Entscheidungslogik
+
+### Daily Optimizer
 
 ```
 Verfügbare Kapazität = (1 - SoC/100) × 7,6 kWh
-Energiebedarf = InfluxDB-Verbrauch (gleicher Wochentag, 28 Tage) - Solar morgen - verfügbare Kapazität
+Energiebedarf = Tagesverbrauch (28d ø) − Solar morgen − verfügbare Kapazität
 
 Wenn Bedarf ≤ 0:  Schwellwert = 0  → removeBatteryGridChargeLimit
 Wenn Bedarf > 0:  günstigste Tibber-Slots wählen bis Bedarf gedeckt
                   Schwellwert = höchster gewählter Slot × 1,05
 ```
 
-Claude setzt den Schwellwert direkt via `setBatteryGridChargeLimit` (Wert in EUR/kWh).
+Claude berücksichtigt zusätzlich das stündliche Lastprofil (gleicher Wochentag, 28d) um SoC-Reserve für Lastspitzen einzuplanen.
 
-## HA Override Handler – Events
+### Intraday Adjuster
 
-| HA-Schalter | Event | Aktion in n8n |
-|-------------|-------|----------------|
+```
+Restbedarf = verbleibender Tagesverbrauch − restliche Solar-Prognose − verfügbare Kapazität
+
+keep:    keine wesentliche Änderung
+update:  Restbedarf > 0 und günstige Slots verfügbar
+remove:  Restbedarf ≤ 0 (Solar + SoC reichen)
+```
+
+### HA Override Handler – Events
+
+| HA-Schalter | Event | Aktion |
+|-------------|-------|--------|
 | `ki_batteriesteuerung_aktiv` → off | `ai_control_disabled` | evcc: Netzladen sofort deaktivieren |
 | `ki_batteriesteuerung_aktiv` → on | `ai_control_enabled` | Daily Optimizer sofort ausführen |
 | `einspeise_logik_aktiv` → on | `discharge_enabled` | evcc: Entladen aktivieren |
 | `einspeise_logik_aktiv` → off | `discharge_disabled` | evcc: Entladen deaktivieren |
 
-## Phase 4 – Intraday Adaptive Optimization
-
-Stündlich prüft der Intraday Adjuster ob PV-Prognose oder SoC vom Tagesplan abweichen und passt den Preisschwellwert nach.
-
-**Workflow:** `intraday-adjuster.json` – Trigger: `0 6-22 * * *` (stündlich 6–22 Uhr, 17×/Tag)
-
-**Flow:**
-1. HA KI-Schalter prüfen (abort wenn off)
-2. InfluxDB: historische `tariffGrid`-Statistik (90 Tage, ct/kWh) → Min/Avg/Max für heutigen Wochentag
-3. InfluxDB: `homePower` 28-Tage-Durchschnitt → erwarteter Tagesverbrauch
-4. Claude Sonnet liest via evcc MCP: SoC, PV-Ist + Prognose, Tibber-Preise rest heute/morgen
-5. Claude entscheidet Laden: `keep` / `update` (setBatteryGridChargeLimit) / `remove` (removeBatteryGridChargeLimit)
-6. Claude entscheidet Entladen (Phase 5): `discharge_action = enable|disable`
-7. n8n setzt batterydischargecontrol, Ergebnis → `sensor.battery_intraday_adjustment` in HA
-
-**Setup:** In n8n importieren, Credentials zuweisen (Home Assistant Token, InfluxDB evcc, Anthropic), MCP endpointUrl manuell eintragen, aktivieren.
-
-**HA Entity:**
-
-| Entity | Inhalt |
-|--------|--------|
-| `sensor.battery_intraday_adjustment` | state: keep/update/remove, Attribute: threshold_ct, discharge_action, reasoning, last_updated |
+---
 
 ## API-Kosten (Anthropic)
 
 Claude Sonnet 4.6: $3 / 1M Input-Tokens, $15 / 1M Output-Tokens
 
-Pro Lauf ca. 5.000 Input- + 450 Output-Tokens (System-Prompt + MCP-Responses + Phase 5 Einspeise-Kontext).
-
-| Workflow | Läufe/Monat | Input-Token/Lauf | ~Kosten/Monat |
-|----------|-------------|-----------------|---------------|
-| Intraday Adjuster (17×/Tag) | 510 | ~5.000 | ~$10 |
-| Daily Optimizer (1×/Tag) | 30 | ~4.500 | ~$0,60 |
+| Workflow | Läufe/Monat | ~Tokens/Lauf | ~Kosten/Monat |
+|----------|-------------|--------------|---------------|
+| Intraday Adjuster (17×/Tag) | 510 | ~5.000 Input + 450 Output | ~$10 |
+| Daily Optimizer (1×/Tag) | 30 | ~4.500 Input + 500 Output | ~$0,60 |
 | **Gesamt** | | | **~$10–11** |
 
 **Sparpotenzial:**
-- Intraday-Trigger auf alle 2h reduzieren (`0 6-22/2 * * *`) → ~$5–6/Monat
+- Intraday-Frequenz auf 2h reduzieren (HA-Dropdown) → ~$5–6/Monat
 - Günstigeres Modell: im Agent-Node Anthropic durch OpenAI ersetzen, Rest bleibt gleich
 
-| Modell | Input | Output | ~Kosten/Monat |
-|--------|-------|--------|---------------|
-| Claude Sonnet 4.6 | $3/MTok | $15/MTok | ~$11 |
-| GPT-4o | $2,50/MTok | $10/MTok | ~$8 |
-| GPT-4o mini | $0,15/MTok | $0,60/MTok | ~$0,50 |
+| Frequenz | Läufe/Tag | ~Kosten/Monat |
+|----------|-----------|---------------|
+| 1h (default) | 17 | ~$11 |
+| 2h | 9 | ~$6 |
+| 3h | 6 | ~$4 |
+| 6h | 3 | ~$2 |
 
-GPT-4o mini ist am günstigsten, Reasoning-Qualität bei Energieoptimierung aber ungetestet.
+---
 
-## Phase 5 – Einspeise-Logik ✅ Live
+## Bekannte Eigenheiten
 
-Batterie ins Netz entladen wenn Überschuss prognostiziert (Solar + SoC deckt Restbedarf) und Tibber-Preis > Einspeisevergütung. In Intraday Adjuster integriert.
-
-- Claude entscheidet: `discharge_action = enable|disable`
-- Neue HA Entity: `input_number.min_soc_einspeisen` (10–50%, default 30%)
-- Dashboard: Slider für Min-SoC, Einspeise-Status in Intraday-Karte
-
-## Phase 6 – Token-Tracking & Kostenübersicht ✅ Live
-
-Token-Verbrauch und API-Kosten jedes Claude-Aufrufs in InfluxDB gespeichert, täglich/monatlich aggregiert.
-
-- `tokenUsage` aus Agent-Output → InfluxDB `ai_costs` Zeitreihe (Tag: `workflow=intraday|daily`)
-- Daily Optimizer aggregiert täglich Tages- und Monatssummen → HA-Sensoren
-- Fallback-Schätzung wenn `tokenUsage` nicht verfügbar: 5.000/450 Tokens (Intraday), 4.500/500 (Daily)
-
-**Neue HA Entities:** `sensor.battery_ai_tokens_last_run`, `sensor.battery_ai_cost_today`, `sensor.battery_ai_cost_month`
-
-## Phase 7 – Ersparnis-Tracking ✅ Live
-
-Täglich 23:55 berechnet `savings-tracker.json` die KI-gesteuerte Ersparnis vs. Tagesdurchschnittspreis.
-
-```
-Ersparnis = Σ (Energie geladen × Tagesdurchschnitt) − Σ (Energie geladen × tatsächlicher Slot-Preis)
-```
-
-- `batteryPower` + `tariffGrid` aus InfluxDB → stündliche Ersparnis pro Slot
-- Negative Slots (wenn Slot-Preis > Durchschnitt) werden auf 0 gekürzt
-- Tageswert in InfluxDB `battery_savings` gespeichert → Monatssumme aggregiert
-
-**Neue HA Entities:** `sensor.battery_ai_savings_today`, `sensor.battery_ai_savings_month`
-
-## Phase 8 – Stündliche Lastmustererkennung ✅ Live
-
-Wiederkehrende Verbrauchsspitzen (z.B. Wärmepumpe 7–9 Uhr) aus InfluxDB erkannt und Claude als stündliches Lastprofil übergeben.
-
-- `homePower GROUP BY time(1h)` der letzten 28 Tage → Ø-Verbrauch pro Stunde (gleicher Wochentag)
-- Daily Optimizer: vollständiges 24h-Profil für morgen
-- Intraday Adjuster: nur nächste 6 Stunden (Prompt-Effizienz)
-- Timezone-Offset dynamisch via `getTimezoneOffset()` (CET/CEST automatisch)
-- Fallback: wenn < 4 Messtage vorhanden → Profil-Abschnitt wird weggelassen
-
-## Phase 9 – Intraday Frequenz konfigurierbar ✅ Live
-
-Häufigkeit des Intraday Adjusters über HA-Dropdown einstellbar (1h / 2h / 3h / 6h).
-
-- Cron-Trigger bleibt stündlich – Skip-Logik im Workflow verhindert Claude-Aufruf wenn nicht im Intervall
-- Keine API-Kosten für übersprungene Läufe
-- Bei 2h: ~$5–6/Monat statt ~$10–11/Monat
-
-| Frequenz | Läufe/Tag | Läufe/Monat | ~Kosten/Monat |
-|----------|-----------|-------------|---------------|
-| 1h (default) | 17 | 510 | ~$11 |
-| 2h | 9 | 270 | ~$6 |
-| 3h | 6 | 180 | ~$4 |
-| 6h | 3 | 90 | ~$2 |
+- **evcc Tibber-Preise**: in `forecast.grid[]` (Wert in EUR → ×100 = ct), nicht `tariffGrid`
+- **evcc Solar-Prognose**: `forecast.solar.tomorrow.energy` (in Wh → ÷1000 = kWh)
+- **n8n als HA-Addon**: `.local` DNS nicht auflösbar → `http://homeassistant:8123` für HA, IP-Adresse für evcc
+- **n8n MCP Node**: `endpointUrl` wird beim JSON-Import zurückgesetzt → nach jedem Import manuell eintragen
+- **n8n Code-Node**: parallele Inputs crashen mit `.item` → Named References (`$('Node Name').first()`) verwenden
+- **HA → n8n Webhook**: n8n URL intern = `http://homeassistant:8081/webhook/...`; nach URL-Änderung HA-Neustart nötig
+- **InfluxDB Write (204)**: HTTP 204 No Content = Erfolg; Write-Nodes haben `onError: continueRegularOutput` um den leeren Response-Body zu ignorieren
