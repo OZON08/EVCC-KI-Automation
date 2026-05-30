@@ -1,0 +1,305 @@
+{
+  "name": "Battery AI – Savings Tracker",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "55 23 * * *"
+            }
+          ]
+        }
+      },
+      "id": "savings-schedule-trigger",
+      "name": "Trigger: täglich 23:55",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [0, 0],
+      "typeVersion": 1.3
+    },
+    {
+      "parameters": {
+        "url": "http://homeassistant:8123/api/states/input_boolean.ki_batteriesteuerung_aktiv",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "savings-ha-ki-check",
+      "name": "HA: KI-Schalter prüfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [224, 0],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.state }}",
+              "value2": "on"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "savings-ki-aktiv",
+      "name": "KI aktiv?",
+      "type": "n8n-nodes-base.if",
+      "position": [448, 0],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();\nconst monthUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();\nreturn [{ json: {\n  today_utc: todayUTC,\n  month_utc: monthUTC,\n  query_battery_power: 'SELECT integral(\"value\") / 3600000 FROM \"batteryPower\" WHERE \"value\" > 0 AND time >= \\'' + todayUTC + '\\' GROUP BY time(1h) fill(0)',\n  query_tariff_hourly: 'SELECT mean(\"value\") * 100 FROM \"tariffGrid\" WHERE time >= \\'' + todayUTC + '\\' GROUP BY time(1h) fill(none)',\n  query_tariff_avg: 'SELECT mean(\"value\") * 100 FROM \"tariffGrid\" WHERE time >= \\'' + todayUTC + '\\'',\n  query_savings_month: 'SELECT sum(\"savings_eur\") FROM \"battery_savings\" WHERE time >= \\'' + monthUTC + '\\''\n}}];"
+      },
+      "id": "savings-heute-berechnen",
+      "name": "Heute berechnen",
+      "type": "n8n-nodes-base.code",
+      "position": [672, 0],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "url": "http://a0d7b954-influxdb:8086/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "db", "value": "evcc" },
+            { "name": "q", "value": "={{ $json.query_battery_power }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "savings-influxdb-battery",
+      "name": "InfluxDB: batteryPower stündlich",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [896, 0],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "r61FJRKq9t50s9A7",
+          "name": "InfluxDB evcc"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://a0d7b954-influxdb:8086/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "db", "value": "evcc" },
+            { "name": "q", "value": "={{ $('Heute berechnen').first().json.query_tariff_hourly }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "savings-influxdb-tariff-hourly",
+      "name": "InfluxDB: tariffGrid stündlich",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1120, 0],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "r61FJRKq9t50s9A7",
+          "name": "InfluxDB evcc"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://a0d7b954-influxdb:8086/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "db", "value": "evcc" },
+            { "name": "q", "value": "={{ $('Heute berechnen').first().json.query_tariff_avg }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "savings-influxdb-tariff-avg",
+      "name": "InfluxDB: tariffGrid Durchschnitt",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1344, 0],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "r61FJRKq9t50s9A7",
+          "name": "InfluxDB evcc"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const powerValues = $('InfluxDB: batteryPower stündlich').first()?.json?.results?.[0]?.series?.[0]?.values ?? [];\nconst priceValues = $('InfluxDB: tariffGrid stündlich').first()?.json?.results?.[0]?.series?.[0]?.values ?? [];\nconst avgCtRaw = $('InfluxDB: tariffGrid Durchschnitt').first()?.json?.results?.[0]?.series?.[0]?.values?.[0]?.[1] ?? null;\n\nconst now = new Date().toISOString();\n\nif (avgCtRaw === null || powerValues.length === 0) {\n  return [{ json: { savings_today_eur: 0, avg_ct: 0, slots_count: 0, timestamp: now, line_protocol: 'battery_savings,period=daily savings_eur=0' } }];\n}\n\nconst avg_ct = avgCtRaw;\nconst priceMap = {};\nfor (const [ts, price_ct] of priceValues) {\n  if (price_ct !== null) priceMap[ts] = price_ct;\n}\n\nlet savings_today = 0;\nlet slots_count = 0;\nfor (const [ts, kwh] of powerValues) {\n  if (kwh === null || kwh <= 0) continue;\n  const slot_ct = priceMap[ts] ?? avg_ct;\n  const saved = kwh * (avg_ct - slot_ct) / 100;\n  savings_today += Math.max(0, saved);\n  slots_count++;\n}\n\nconst savings_rounded = Math.round(savings_today * 10000) / 10000;\nreturn [{ json: {\n  savings_today_eur: savings_rounded,\n  avg_ct: Math.round(avg_ct * 100) / 100,\n  slots_count,\n  timestamp: now,\n  line_protocol: 'battery_savings,period=daily savings_eur=' + savings_rounded\n} }];"
+      },
+      "id": "savings-ersparnis-berechnen",
+      "name": "Ersparnis berechnen",
+      "type": "n8n-nodes-base.code",
+      "position": [1568, 0],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://homeassistant:8123/api/states/sensor.battery_ai_savings_today",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"state\": String($json.savings_today_eur), \"attributes\": { \"unit_of_measurement\": \"EUR\", \"friendly_name\": \"KI Ersparnis heute\", \"avg_ct\": $json.avg_ct, \"slots_count\": $json.slots_count, \"timestamp\": $json.timestamp } } }}",
+        "options": {}
+      },
+      "id": "savings-ha-heute",
+      "name": "HA: Ersparnis heute aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1792, 0],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://a0d7b954-influxdb:8086/write?db=evcc",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "text/plain",
+        "body": "={{ $json.line_protocol }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "savings-influxdb-write",
+      "name": "InfluxDB: Ersparnis schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "onError": "continueRegularOutput",
+      "position": [2016, 0],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "r61FJRKq9t50s9A7",
+          "name": "InfluxDB evcc"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://a0d7b954-influxdb:8086/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "db", "value": "evcc" },
+            { "name": "q", "value": "={{ $('Heute berechnen').first().json.query_savings_month }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "savings-influxdb-month",
+      "name": "InfluxDB: Ersparnis Monat",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2240, 0],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "r61FJRKq9t50s9A7",
+          "name": "InfluxDB evcc"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://homeassistant:8123/api/states/sensor.battery_ai_savings_month",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"state\": String(Math.round(($('InfluxDB: Ersparnis Monat').first()?.json?.results?.[0]?.series?.[0]?.values?.[0]?.[1] ?? 0) * 10000) / 10000)), \"attributes\": { \"unit_of_measurement\": \"EUR\", \"friendly_name\": \"KI Ersparnis Monat\" } } }}",
+        "options": {}
+      },
+      "id": "savings-ha-monat",
+      "name": "HA: Ersparnis Monat aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [2464, 0],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Trigger: täglich 23:55": {
+      "main": [[{ "node": "HA: KI-Schalter prüfen", "type": "main", "index": 0 }]]
+    },
+    "HA: KI-Schalter prüfen": {
+      "main": [[{ "node": "KI aktiv?", "type": "main", "index": 0 }]]
+    },
+    "KI aktiv?": {
+      "main": [
+        [{ "node": "Heute berechnen", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Heute berechnen": {
+      "main": [[{ "node": "InfluxDB: batteryPower stündlich", "type": "main", "index": 0 }]]
+    },
+    "InfluxDB: batteryPower stündlich": {
+      "main": [[{ "node": "InfluxDB: tariffGrid stündlich", "type": "main", "index": 0 }]]
+    },
+    "InfluxDB: tariffGrid stündlich": {
+      "main": [[{ "node": "InfluxDB: tariffGrid Durchschnitt", "type": "main", "index": 0 }]]
+    },
+    "InfluxDB: tariffGrid Durchschnitt": {
+      "main": [[{ "node": "Ersparnis berechnen", "type": "main", "index": 0 }]]
+    },
+    "Ersparnis berechnen": {
+      "main": [[{ "node": "HA: Ersparnis heute aktualisieren", "type": "main", "index": 0 }]]
+    },
+    "HA: Ersparnis heute aktualisieren": {
+      "main": [[{ "node": "InfluxDB: Ersparnis schreiben", "type": "main", "index": 0 }]]
+    },
+    "InfluxDB: Ersparnis schreiben": {
+      "main": [[{ "node": "InfluxDB: Ersparnis Monat", "type": "main", "index": 0 }]]
+    },
+    "InfluxDB: Ersparnis Monat": {
+      "main": [[{ "node": "HA: Ersparnis Monat aktualisieren", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "savings-tracker"
+  }
+}
