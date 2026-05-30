@@ -15,7 +15,10 @@
       "id": "savings-schedule-trigger",
       "name": "Trigger: täglich 23:55",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "typeVersion": 1.3
     },
     {
@@ -28,7 +31,10 @@
       "id": "savings-ha-ki-check",
       "name": "HA: KI-Schalter prüfen",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [224, 0],
+      "position": [
+        224,
+        0
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpHeaderAuth": {
@@ -52,7 +58,10 @@
       "id": "savings-ki-aktiv",
       "name": "KI aktiv?",
       "type": "n8n-nodes-base.if",
-      "position": [448, 0],
+      "position": [
+        448,
+        0
+      ],
       "typeVersion": 2.3
     },
     {
@@ -62,7 +71,10 @@
       "id": "savings-heute-berechnen",
       "name": "Heute berechnen",
       "type": "n8n-nodes-base.code",
-      "position": [672, 0],
+      "position": [
+        672,
+        0
+      ],
       "typeVersion": 2
     },
     {
@@ -73,8 +85,14 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "db", "value": "evcc" },
-            { "name": "q", "value": "={{ $json.query_battery_power }}" }
+            {
+              "name": "db",
+              "value": "evcc"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.query_battery_power }}"
+            }
           ]
         },
         "options": {}
@@ -82,7 +100,10 @@
       "id": "savings-influxdb-battery",
       "name": "InfluxDB: batteryPower stündlich",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [896, 0],
+      "position": [
+        896,
+        0
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpBasicAuth": {
@@ -99,8 +120,14 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "db", "value": "evcc" },
-            { "name": "q", "value": "={{ $('Heute berechnen').first().json.query_tariff_hourly }}" }
+            {
+              "name": "db",
+              "value": "evcc"
+            },
+            {
+              "name": "q",
+              "value": "={{ $('Heute berechnen').first().json.query_tariff_hourly }}"
+            }
           ]
         },
         "options": {}
@@ -108,7 +135,10 @@
       "id": "savings-influxdb-tariff-hourly",
       "name": "InfluxDB: tariffGrid stündlich",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [1120, 0],
+      "position": [
+        1120,
+        0
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpBasicAuth": {
@@ -125,8 +155,14 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "db", "value": "evcc" },
-            { "name": "q", "value": "={{ $('Heute berechnen').first().json.query_tariff_avg }}" }
+            {
+              "name": "db",
+              "value": "evcc"
+            },
+            {
+              "name": "q",
+              "value": "={{ $('Heute berechnen').first().json.query_tariff_avg }}"
+            }
           ]
         },
         "options": {}
@@ -134,7 +170,10 @@
       "id": "savings-influxdb-tariff-avg",
       "name": "InfluxDB: tariffGrid Durchschnitt",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [1344, 0],
+      "position": [
+        1344,
+        0
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpBasicAuth": {
@@ -150,7 +189,10 @@
       "id": "savings-ersparnis-berechnen",
       "name": "Ersparnis berechnen",
       "type": "n8n-nodes-base.code",
-      "position": [1568, 0],
+      "position": [
+        1568,
+        0
+      ],
       "typeVersion": 2
     },
     {
@@ -167,7 +209,10 @@
       "id": "savings-ha-heute",
       "name": "HA: Ersparnis heute aktualisieren",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [1792, 0],
+      "position": [
+        1792,
+        0
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpHeaderAuth": {
@@ -198,7 +243,10 @@
       "name": "InfluxDB: Ersparnis schreiben",
       "type": "n8n-nodes-base.httpRequest",
       "onError": "continueRegularOutput",
-      "position": [2016, 0],
+      "position": [
+        2016,
+        0
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpBasicAuth": {
@@ -215,8 +263,14 @@
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            { "name": "db", "value": "evcc" },
-            { "name": "q", "value": "={{ $('Heute berechnen').first().json.query_savings_month }}" }
+            {
+              "name": "db",
+              "value": "evcc"
+            },
+            {
+              "name": "q",
+              "value": "={{ $('Heute berechnen').first().json.query_savings_month }}"
+            }
           ]
         },
         "options": {}
@@ -224,7 +278,10 @@
       "id": "savings-influxdb-month",
       "name": "InfluxDB: Ersparnis Monat",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [2240, 0],
+      "position": [
+        2240,
+        0
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpBasicAuth": {
@@ -235,19 +292,35 @@
     },
     {
       "parameters": {
+        "jsCode": "const results = $input.first()?.json?.results;\nlet val = 0;\nif (results && results[0] && results[0].series && results[0].series[0] &&\n    results[0].series[0].values && results[0].series[0].values[0]) {\n  val = results[0].series[0].values[0][1] || 0;\n}\nconst savings_month_eur = Math.round(val * 10000) / 10000;\nreturn [{ json: { savings_month_eur } }];"
+      },
+      "id": "savings-monat-berechnen",
+      "name": "Monatswert berechnen",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        2352,
+        0
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "http://homeassistant:8123/api/states/sensor.battery_ai_savings_month",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"state\": String(Math.round(($('InfluxDB: Ersparnis Monat').first()?.json?.results?.[0]?.series?.[0]?.values?.[0]?.[1] ?? 0) * 10000) / 10000)), \"attributes\": { \"unit_of_measurement\": \"EUR\", \"friendly_name\": \"KI Ersparnis Monat\" } } }}",
+        "jsonBody": "={{ { \"state\": String($json.savings_month_eur), \"attributes\": { \"unit_of_measurement\": \"EUR\", \"friendly_name\": \"KI Ersparnis Monat\" } } }}",
         "options": {}
       },
       "id": "savings-ha-monat",
       "name": "HA: Ersparnis Monat aktualisieren",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [2464, 0],
+      "position": [
+        2576,
+        0
+      ],
       "typeVersion": 4.4,
       "credentials": {
         "httpHeaderAuth": {
@@ -259,40 +332,137 @@
   ],
   "connections": {
     "Trigger: täglich 23:55": {
-      "main": [[{ "node": "HA: KI-Schalter prüfen", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "HA: KI-Schalter prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "HA: KI-Schalter prüfen": {
-      "main": [[{ "node": "KI aktiv?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "KI aktiv?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "KI aktiv?": {
       "main": [
-        [{ "node": "Heute berechnen", "type": "main", "index": 0 }],
+        [
+          {
+            "node": "Heute berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ],
         []
       ]
     },
     "Heute berechnen": {
-      "main": [[{ "node": "InfluxDB: batteryPower stündlich", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "InfluxDB: batteryPower stündlich",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "InfluxDB: batteryPower stündlich": {
-      "main": [[{ "node": "InfluxDB: tariffGrid stündlich", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "InfluxDB: tariffGrid stündlich",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "InfluxDB: tariffGrid stündlich": {
-      "main": [[{ "node": "InfluxDB: tariffGrid Durchschnitt", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "InfluxDB: tariffGrid Durchschnitt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "InfluxDB: tariffGrid Durchschnitt": {
-      "main": [[{ "node": "Ersparnis berechnen", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Ersparnis berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Ersparnis berechnen": {
-      "main": [[{ "node": "HA: Ersparnis heute aktualisieren", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "HA: Ersparnis heute aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "HA: Ersparnis heute aktualisieren": {
-      "main": [[{ "node": "InfluxDB: Ersparnis schreiben", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "InfluxDB: Ersparnis schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "InfluxDB: Ersparnis schreiben": {
-      "main": [[{ "node": "InfluxDB: Ersparnis Monat", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "InfluxDB: Ersparnis Monat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "InfluxDB: Ersparnis Monat": {
-      "main": [[{ "node": "HA: Ersparnis Monat aktualisieren", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Monatswert berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monatswert berechnen": {
+      "main": [
+        [
+          {
+            "node": "HA: Ersparnis Monat aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
