@@ -29,7 +29,7 @@ Zusätzlich laufen:
 | **evcc MCP** | Tool-Interface für Claude (experimental) | `http://<EVCC_IP>:7070/mcp` |
 | **RCT Power** | Hausbatterie (7,6 kWh, ~7 kW) | via evcc |
 | **Tibber** | Dynamische Strompreise (15-min-Raster) | via evcc `forecast.grid` |
-| **InfluxDB** | Verbrauchshistorie | `http://a0d7b954-influxdb:8086/` db=`evcc` |
+| **InfluxDB** | Verbrauchshistorie | HA Add-on, db=`evcc` |
 | **Home Assistant** | Dashboard, Schalter, Overrides | `http://homeassistant:8123` (intern) |
 
 ## Workflows
@@ -73,8 +73,6 @@ Zusätzlich laufen:
 │   │   └── battery-ai-webhooks.yaml # Schalter → n8n Webhooks
 │   └── dashboards/
 │       └── battery-ai-dashboard.yaml
-├── docs/
-│   └── superpowers/specs/           # Design-Spezifikationen
 └── scripts/
     └── test-evcc-api.sh             # API-Test
 ```
