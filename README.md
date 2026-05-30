@@ -281,3 +281,12 @@ Claude Sonnet 4.6: $3 / 1M Input-Tokens, $15 / 1M Output-Tokens
 - **n8n Code-Node**: parallele Inputs crashen mit `.item` → Named References (`$('Node Name').first()`) verwenden
 - **HA → n8n Webhook**: n8n URL intern = `http://homeassistant:8081/webhook/...`; nach URL-Änderung HA-Neustart nötig
 - **InfluxDB Write (204)**: HTTP 204 No Content = Erfolg; Write-Nodes haben `onError: continueRegularOutput` um den leeren Response-Body zu ignorieren
+
+---
+
+## Unterstützung
+
+Wenn dir dieses Projekt hilft, freue ich mich über einen Kaffee ☕
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ozon-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/ozon)
+[![GitHub Sponsor](https://img.shields.io/badge/GitHub-OZON08-181717?style=flat&logo=github)](https://github.com/sponsors/OZON08)
