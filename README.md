@@ -203,14 +203,15 @@ Ersparnis = Σ (Energie geladen × Tagesdurchschnitt) − Σ (Energie geladen ×
 
 **Neue HA Entities:** `sensor.battery_ai_savings_today`, `sensor.battery_ai_savings_month`
 
-## Phase 8 – Stündliche Lastmustererkennung (geplant)
+## Phase 8 – Stündliche Lastmustererkennung ✅ Live
 
-Wiederkehrende Verbrauchsspitzen (z.B. Wärmepumpe 7–9 Uhr) aus InfluxDB erkennen und Claude als stündliches Lastprofil übergeben. Claude berechnet Netto-Bedarf (Lastprofil − PV-Prognose) und plant SoC-Reserve vorausschauend.
+Wiederkehrende Verbrauchsspitzen (z.B. Wärmepumpe 7–9 Uhr) aus InfluxDB erkannt und Claude als stündliches Lastprofil übergeben.
 
-- `homePower GROUP BY time(1h)` der letzten 28 Tage → Ø-Verbrauch pro Stunde
-- Integration in Daily Optimizer (24h-Profil) + Intraday Adjuster (nächste 6h)
-- Timezone-Offset dynamisch via `getTimezoneOffset()`
-- Spec: `docs/superpowers/specs/2026-05-29-phase8-stundliche-lastmuster.md`
+- `homePower GROUP BY time(1h)` der letzten 28 Tage → Ø-Verbrauch pro Stunde (gleicher Wochentag)
+- Daily Optimizer: vollständiges 24h-Profil für morgen
+- Intraday Adjuster: nur nächste 6 Stunden (Prompt-Effizienz)
+- Timezone-Offset dynamisch via `getTimezoneOffset()` (CET/CEST automatisch)
+- Fallback: wenn < 4 Messtage vorhanden → Profil-Abschnitt wird weggelassen
 
 ## Phase 9 – Intraday Frequenz konfigurierbar ✅ Live
 
