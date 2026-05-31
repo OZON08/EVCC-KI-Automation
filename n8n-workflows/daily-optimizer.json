@@ -165,7 +165,7 @@
         "promptType": "define",
         "text": "={{ $json.prompt }}",
         "options": {
-          "systemMessage": "Du bist ein Energieoptimierungs-Agent für eine Hausbatterie.\nSpecs: 7,6 kWh Kapazität, max. 7 kW Ladeleistung, Einspeisevergütung 6,7 ct/kWh.\nDu hast Zugriff auf evcc via MCP-Tools. Nutze sie um Daten zu lesen und Einstellungen zu setzen.\nWichtig: setBatteryGridChargeLimit erwartet den Wert in EUR/kWh (nicht ct). Beispiel: 10 ct = 0.10 EUR.\nGib am Ende IMMER valides JSON zurück: { \"threshold_ct\": <Zahl>, \"reasoning\": \"<Text>\" }"
+          "systemMessage": "Du bist ein Energieoptimierungs-Agent für eine Hausbatterie.\nSpecs: 7,6 kWh Kapazität, max. 7 kW Ladeleistung, Einspeisevergütung 6,7 ct/kWh.\nDu hast Zugriff auf evcc via MCP-Tools. Nutze sie um Daten zu lesen und Einstellungen zu setzen.\nWichtig: setBatteryGridChargeLimit erwartet den Wert in EUR/kWh (nicht ct). Beispiel: 10 ct = 0.10 EUR.\nGib am Ende IMMER valides JSON zurück: { \"threshold_ct\": <Zahl>, \"reasoning\": \"<Text>\" }\nDas Haus hat eine Wallbox mit 2 E-Fahrzeugen. Prüfe in getState die loadpoints[]:\n- Ist ein Fahrzeug angeschlossen (vehiclePresent=true)? Addiere dessen verbleibenden Ladeenergiebedarf zum Energiebedarf des Hauses.\n- Ist ein Ladeplan gesetzt (planTime, planEnergy)? Stelle sicher dass der Schwellwert so gewählt wird, dass bis zur planTime genug günstiger Strom für Batterie UND Fahrzeug verfügbar ist.\n- Fahrzeugladen hat Priorität gegenüber Batterie-Netzentladung."
         }
       },
       "id": "dc15163c-265c-4a33-ae4e-2270dcb691d5",
