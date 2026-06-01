@@ -7,13 +7,13 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 6-22 * * *"
+              "expression": "0 * * * *"
             }
           ]
         }
       },
       "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "name": "Trigger: stündlich 6–22 Uhr",
+      "name": "Trigger: stündlich 0–23 Uhr",
       "type": "n8n-nodes-base.scheduleTrigger",
       "position": [
         0,
