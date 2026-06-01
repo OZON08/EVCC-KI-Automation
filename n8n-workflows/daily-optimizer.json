@@ -170,12 +170,12 @@
       },
       "id": "dc15163c-265c-4a33-ae4e-2270dcb691d5",
       "name": "Claude Sonnet + evcc MCP",
-      "type": "@n8n/n8n-nodes-langchain.agent",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "position": [
         1120,
         0
       ],
-      "typeVersion": 3.1,
+      "typeVersion": 1.4,
       "notes": "Claude hat direkten evcc-Zugriff via MCP. Liest State, analysiert Preise, setzt Schwellwert selbst."
     },
     {
