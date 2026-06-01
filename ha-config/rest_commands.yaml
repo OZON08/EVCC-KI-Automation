@@ -1,10 +1,9 @@
-# In configuration.yaml einfuegen:
-# rest_command: !include ha-config/rest_commands.yaml
-#
-# N8N_URL anpassen (IP-Adresse deines n8n, z.B. 192.168.1.x)
+# Diesen Eintrag zum bestehenden rest_command: Block in configuration.yaml hinzufuegen
+# (NICHT nochmal rest_command: schreiben, nur den Eintrag darunter)
 
 n8n_restore_ki_sensoren:
-  url: "http://<N8N_URL>:5678/webhook/battery-ai-restore"
+  url: "http://homeassistant:8081/webhook/battery-ai-restore"
   method: POST
-  content_type: "application/json"
+  headers:
+    Content-Type: application/json
   payload: '{"source": "ha_restart"}'
