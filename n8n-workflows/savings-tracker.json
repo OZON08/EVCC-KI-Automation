@@ -328,6 +328,22 @@
           "name": "Home Assistant Token"
         }
       }
+    },
+    {
+      "parameters": {
+        "path": "battery-ai-savings-restore",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "id": "webhook-savings-restore",
+      "name": "Webhook: Savings wiederherstellen",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        0,
+        -160
+      ],
+      "typeVersion": 2
     }
   ],
   "connections": {
@@ -458,6 +474,17 @@
         [
           {
             "node": "HA: Ersparnis Monat aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Savings wiederherstellen": {
+      "main": [
+        [
+          {
+            "node": "HA: KI-Schalter prüfen",
             "type": "main",
             "index": 0
           }

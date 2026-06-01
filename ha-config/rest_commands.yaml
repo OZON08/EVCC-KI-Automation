@@ -1,8 +1,15 @@
-# Diesen Eintrag zum bestehenden rest_command: Block in configuration.yaml hinzufuegen
-# (NICHT nochmal rest_command: schreiben, nur den Eintrag darunter)
+# Diese Eintraege zum bestehenden rest_command: Block in configuration.yaml hinzufuegen
+# (NICHT nochmal rest_command: schreiben)
 
 n8n_restore_ki_sensoren:
   url: "http://homeassistant:8081/webhook/battery-ai-restore"
+  method: POST
+  headers:
+    Content-Type: application/json
+  payload: '{"source": "ha_restart"}'
+
+n8n_restore_savings_sensoren:
+  url: "http://homeassistant:8081/webhook/battery-ai-savings-restore"
   method: POST
   headers:
     Content-Type: application/json
