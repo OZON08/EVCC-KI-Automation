@@ -508,6 +508,22 @@
         80
       ],
       "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "path": "battery-ai-restore",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "id": "webhook-restore-sensors",
+      "name": "Webhook: Sensoren wiederherstellen",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        0,
+        -160
+      ],
+      "typeVersion": 2
     }
   ],
   "pinData": {},
@@ -732,6 +748,17 @@
         [
           {
             "node": "evcc: Limit entfernen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Sensoren wiederherstellen": {
+      "main": [
+        [
+          {
+            "node": "HA: KI-Schalter prüfen",
             "type": "main",
             "index": 0
           }

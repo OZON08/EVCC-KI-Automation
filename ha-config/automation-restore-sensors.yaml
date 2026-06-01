@@ -1,0 +1,14 @@
+# HA Automation: KI-Sensoren nach Neustart wiederherstellen
+# Import via: Einstellungen > Automatisierungen > Importieren
+# ODER in automations.yaml einfuegen
+
+alias: "Batterie KI – Sensoren nach Neustart"
+description: "Triggert Daily Optimizer nach HA-Neustart um virtuelle Sensoren neu zu schreiben"
+mode: single
+trigger:
+  - platform: homeassistant
+    event: start
+action:
+  - delay: "00:02:00"
+  - service: rest_command.n8n_restore_ki_sensoren
+    data: {}
