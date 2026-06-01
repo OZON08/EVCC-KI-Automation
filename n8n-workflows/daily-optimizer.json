@@ -511,9 +511,8 @@
     },
     {
       "parameters": {
+        "httpMethod": "POST",
         "path": "battery-ai-restore",
-        "responseMode": "onReceived",
-        "responseData": "firstEntryJson",
         "options": {}
       },
       "id": "webhook-restore-sensors",

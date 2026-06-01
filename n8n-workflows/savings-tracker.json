@@ -331,9 +331,8 @@
     },
     {
       "parameters": {
+        "httpMethod": "POST",
         "path": "battery-ai-savings-restore",
-        "responseMode": "onReceived",
-        "responseData": "firstEntryJson",
         "options": {}
       },
       "id": "webhook-savings-restore",
