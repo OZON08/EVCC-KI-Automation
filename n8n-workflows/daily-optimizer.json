@@ -148,7 +148,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const data = $('InfluxDB: Verbrauch abfragen').first()?.json ?? {};\nconst profileRaw = $input.first()?.json ?? {};\nconst series = data?.results?.[0]?.series?.[0]?.values ?? [];\n\n// Morgen's Wochentag (0=So, 1=Mo, ..., 6=Sa)\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst targetWeekday = tomorrow.getDay();\n\n// Gleicher Wochentag, Werte > 1 kWh (vollständige Tage)\nconst sameWeekday = series\n  .filter(([time, kwh]) => new Date(time).getDay() === targetWeekday && kwh > 1)\n  .map(([, kwh]) => kwh);\n\n// Fallback: alle Tage mit Daten\nconst allDays = series\n  .filter(([, kwh]) => kwh > 1)\n  .map(([, kwh]) => kwh);\n\nconst values = sameWeekday.length >= 2 ? sameWeekday : allDays;\nconst avg = values.length > 0\n  ? values.reduce((a, b) => a + b, 0) / values.length\n  : 10;\n\nconst source = sameWeekday.length >= 2\n  ? 'gleicher Wochentag'\n  : allDays.length > 0\n    ? 'Gesamtdurchschnitt'\n    : 'Fallback';\n\nconst avgRounded = Math.round(avg * 10) / 10;\nconst dataDays = sameWeekday.length || allDays.length;\n\n// Lastprofil berechnen (gleicher Wochentag wie morgen, 28d)\nconst profileSeries = profileRaw?.results?.[0]?.series?.[0]?.values ?? [];\nconst offsetHours = -new Date().getTimezoneOffset() / 60;\nconst byHour = {};\nfor (let h = 0; h < 24; h++) byHour[h] = [];\n\nprofileSeries\n  .filter(([time]) => {\n    const local = new Date(new Date(time).getTime() + offsetHours * 3600000);\n    return local.getDay() === targetWeekday;\n  })\n  .forEach(([time, kwh]) => {\n    const local = new Date(new Date(time).getTime() + offsetHours * 3600000);\n    const hour = local.getHours();\n    if (kwh !== null && kwh > 0) byHour[hour].push(kwh);\n  });\n\nconst profile = [];\nfor (let h = 0; h < 24; h++) {\n  const vals = byHour[h];\n  profile.push({\n    hour: h,\n    avg_kwh: vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 100) / 100 : 0,\n    samples: vals.length\n  });\n}\n\nconst profileDays = Math.max(...profile.map(p => p.samples), 0);\nconst hasProfile = profileDays >= 4;\n\nconst profileSection = hasProfile\n  ? '\\n\\nStündliches Verbrauchsprofil (gleicher Wochentag, ' + profileDays + ' Messtage, 28d-Durchschnitt):\\n' +\n    profile.map(p => p.hour.toString().padStart(2, '0') + ':00: ' + p.avg_kwh + ' kWh').join(' | ') +\n    '\\n\\nBerechne pro Stunde den Netto-Bedarf (Verbrauch minus PV-Prognose). Stunden mit Netto-Bedarf > 0 brauchen Batterie-Reserve. Plane die Ladestrategie so dass der SoC zu Lastspitzen ausreicht.'\n  : '';\n\nconst prompt = 'Analysiere den aktuellen Zustand der Hausbatterie und optimiere die Ladekosten fuer morgen.\\n\\nVorgehen:\\n1. Rufe getState auf um SoC, Solar-Prognose und aktuelle Situation zu sehen\\n2. Rufe getTariffInfo mit type=grid auf um die Tibber-Preise fuer morgen zu sehen\\n3. Berechne den optimalen Preisschwellwert:\\n   - Verfuegbare Kapazitaet = (1 - SoC/100) * 7.6 kWh\\n   - Energiebedarf = ' + avgRounded + ' kWh (Verbrauchsdaten: ' + source + ', ' + dataDays + ' Messtage) - Solar-Prognose morgen - verfuegbare Kapazitaet\\n   - Wenn Bedarf <= 0: Schwellwert = 0 (kein Netzladen noetig, Solar reicht)\\n   - Wenn Bedarf > 0: Guenstigste Preis-Slots fuer morgen waehlen bis Bedarf gedeckt, Schwellwert = hoechster gewaehlter Preis * 1.05\\n4. Setze den Schwellwert mit setBatteryGridChargeLimit (Wert in EUR/kWh, also ct/100)\\n   - Beispiel: 8.5 ct/kWh = 0.085 EUR/kWh\\n   - Wenn Schwellwert = 0: removeBatteryGridChargeLimit aufrufen\\n5. Antworte mit einer kurzen deutschen Zusammenfassung:\\n   { \"threshold_ct\": <Zahl>, \"reasoning\": \"<Begruendung>\" }' + profileSection;\n\nreturn [{ json: {\n  avg_consumption_kwh: avgRounded,\n  data_days: dataDays,\n  source,\n  prompt\n}}];"
+        "jsCode": "const data = $('InfluxDB: Verbrauch abfragen').first()?.json ?? {};\nconst profileRaw = $('InfluxDB: Lastprofil abfragen').first()?.json ?? {};\nconst stateRaw = $('evcc: State abrufen').first()?.json ?? {};\nconst tariffRaw = $('evcc: Tarif abrufen').first()?.json ?? {};\nconst series = data?.results?.[0]?.series?.[0]?.values ?? [];\n\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst targetWeekday = tomorrow.getDay();\n\nconst sameWeekday = series\n  .filter(([time, kwh]) => new Date(time).getDay() === targetWeekday && kwh > 1)\n  .map(([, kwh]) => kwh);\nconst allDays = series.filter(([, kwh]) => kwh > 1).map(([, kwh]) => kwh);\nconst values = sameWeekday.length >= 2 ? sameWeekday : allDays;\nconst avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 10;\nconst source = sameWeekday.length >= 2 ? 'gleicher Wochentag' : allDays.length > 0 ? 'Gesamtdurchschnitt' : 'Fallback';\nconst avgRounded = Math.round(avg * 10) / 10;\nconst dataDays = sameWeekday.length || allDays.length;\n\n// evcc State\nconst evccState = stateRaw?.result ?? stateRaw;\nconst soc = parseFloat(evccState?.batterySoc ?? 50);\nconst availableCapacity = Math.round((1 - soc / 100) * 7.6 * 10) / 10;\nconst loadpoints = evccState?.loadpoints ?? [];\n\n// Solar forecast tomorrow\nconst forecastData = evccState?.forecast?.solar?.tomorrow ?? evccState?.pvForecast?.tomorrow ?? [];\nconst solarTomorrow = Array.isArray(forecastData)\n  ? Math.round(forecastData.reduce((s, h) => s + (h.wh ?? h.energy ?? 0), 0) / 1000 * 10) / 10\n  : Math.round((parseFloat(forecastData) || 0) * 10) / 10;\n\n// EV/Wallbox info\nlet evSection = '';\nconst presentLPs = loadpoints.filter(lp => lp.vehiclePresent);\nif (presentLPs.length > 0) {\n  const info = presentLPs.map(lp => {\n    const parts = [];\n    if (lp.planEnergy) parts.push('Ladeenergie: ' + lp.planEnergy + ' kWh');\n    if (lp.planTime) parts.push('bis: ' + lp.planTime);\n    return parts.length ? parts.join(', ') : 'Fahrzeug angeschlossen';\n  }).join(' | ');\n  evSection = '\\nFahrzeug(e): ' + info + '\\nAddiere EV-Energiebedarf zum Tagesverbrauch.';\n}\n\n// Tibber rates for tomorrow\nconst rates = tariffRaw?.result?.rates ?? tariffRaw?.rates ?? [];\nconst tmrStart = new Date(); tmrStart.setDate(tmrStart.getDate() + 1); tmrStart.setHours(0,0,0,0);\nconst tmrEnd = new Date(tmrStart); tmrEnd.setDate(tmrEnd.getDate() + 1);\nconst tomorrowRates = rates\n  .filter(r => new Date(r.start) >= tmrStart && new Date(r.start) < tmrEnd)\n  .sort((a, b) => new Date(a.start) - new Date(b.start));\n\nconst tariffStr = tomorrowRates.length > 0\n  ? tomorrowRates.map(r => {\n      const h = new Date(r.start).getHours().toString().padStart(2, '0');\n      const ct = Math.round(r.price * 10000) / 100;\n      return h + ':00: ' + ct + 'ct';\n    }).join(' | ')\n  : 'keine Tarif-Daten';\n\n// Load profile\nconst offsetHours = -new Date().getTimezoneOffset() / 60;\nconst byHour = {};\nfor (let h = 0; h < 24; h++) byHour[h] = [];\nconst profileSeries = profileRaw?.results?.[0]?.series?.[0]?.values ?? [];\nprofileSeries\n  .filter(([time]) => new Date(time).getDay() === targetWeekday)\n  .forEach(([time, kwh]) => {\n    const local = new Date(new Date(time).getTime() + offsetHours * 3600000);\n    const hour = local.getHours();\n    if (kwh !== null && kwh > 0) byHour[hour].push(kwh);\n  });\nconst profile = [];\nfor (let h = 0; h < 24; h++) {\n  const vals = byHour[h];\n  profile.push({ hour: h, avg_kwh: vals.length > 0 ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length*100)/100 : 0, samples: vals.length });\n}\nconst profileDays = Math.max(...profile.map(p => p.samples), 0);\nconst profileSection = profileDays >= 4\n  ? '\\n\\nStündliches Verbrauchsprofil (gleicher Wochentag, ' + profileDays + ' Messtage):\\n' +\n    profile.map(p => p.hour.toString().padStart(2,'0') + ':00: ' + p.avg_kwh + ' kWh').join(' | ') +\n    '\\n\\nStunden mit hohem Verbrauch einplanen.'\n  : '';\n\nconst prompt = 'Optimiere die Batterieladekosten fuer morgen.' +\n  '\\n\\nAktuelle Daten:' +\n  '\\nBatterie: SoC ' + soc + '%, verfuegbare Kapazitaet: ' + availableCapacity + ' kWh' +\n  '\\nSolar-Prognose morgen: ' + solarTomorrow + ' kWh' +\n  '\\nErwarteter Tagesverbrauch: ' + avgRounded + ' kWh (' + source + ', ' + dataDays + ' Messtage)' +\n  evSection +\n  '\\n\\nTibber-Preise morgen:\\n' + tariffStr +\n  profileSection +\n  '\\n\\nBerechne den optimalen Preisschwellwert:' +\n  '\\n- Energiebedarf = ' + avgRounded + ' - ' + solarTomorrow + ' (Solar) - ' + availableCapacity + ' (Batterie) kWh' +\n  '\\n- Wenn Bedarf <= 0: threshold_ct = 0 (Solar + Batterie reichen)' +\n  '\\n- Wenn Bedarf > 0: waehle guenstigste Tibber-Slots bis Bedarf gedeckt, Schwellwert = hoechster Slot-Preis x 1.05' +\n  '\\n- n8n setzt den Schwellwert – mache KEINEN evcc-API-Aufruf' +\n  '\\n\\nAntworte NUR mit JSON: { \"threshold_ct\": <Zahl in ct/kWh>, \"reasoning\": \"<kurze Begruendung>\" }';\n\nreturn [{ json: { avg_consumption_kwh: avgRounded, data_days: dataDays, source, soc, solar_tomorrow_kwh: solarTomorrow, prompt } }];"
       },
       "id": "33f8f8af-40ea-43c2-aaf0-d5b5affae010",
       "name": "Verbrauch berechnen",
@@ -165,7 +165,7 @@
         "promptType": "define",
         "text": "={{ $json.prompt }}",
         "options": {
-          "systemMessage": "Du bist ein Energieoptimierungs-Agent für eine Hausbatterie.\nSpecs: 7,6 kWh Kapazität, max. 7 kW Ladeleistung, Einspeisevergütung 6,7 ct/kWh.\nDu hast Zugriff auf evcc via MCP-Tools. Nutze sie um Daten zu lesen und Einstellungen zu setzen.\nWichtig: setBatteryGridChargeLimit erwartet den Wert in EUR/kWh (nicht ct). Beispiel: 10 ct = 0.10 EUR.\nGib am Ende IMMER valides JSON zurück: { \"threshold_ct\": <Zahl>, \"reasoning\": \"<Text>\" }\nDas Haus hat eine Wallbox mit 2 E-Fahrzeugen. Prüfe in getState die loadpoints[]:\n- Ist ein Fahrzeug angeschlossen (vehiclePresent=true)? Addiere dessen verbleibenden Ladeenergiebedarf zum Energiebedarf des Hauses.\n- Ist ein Ladeplan gesetzt (planTime, planEnergy)? Stelle sicher dass der Schwellwert so gewählt wird, dass bis zur planTime genug günstiger Strom für Batterie UND Fahrzeug verfügbar ist.\n- Fahrzeugladen hat Priorität gegenüber Batterie-Netzentladung."
+          "systemMessage": "Du bist ein Energieoptimierungs-Agent fuer eine Hausbatterie.\nSpecs: 7,6 kWh Kapazitaet, max. 7 kW Ladeleistung, Einspeiseverguetung 6,7 ct/kWh.\nAlle Daten sind bereits im Prompt enthalten – mache KEINE API-Aufrufe.\nn8n setzt den Schwellwert automatisch nach deiner Antwort.\nGib am Ende IMMER valides JSON zurueck: { \"threshold_ct\": <Zahl in ct/kWh>, \"reasoning\": \"<Text>\" }\nDas Haus hat eine Wallbox mit 2 E-Fahrzeugen. EV-Informationen sind wenn vorhanden bereits im Prompt enthalten."
         }
       },
       "id": "dc15163c-265c-4a33-ae4e-2270dcb691d5",
@@ -177,21 +177,6 @@
       ],
       "typeVersion": 3.1,
       "notes": "Claude hat direkten evcc-Zugriff via MCP. Liest State, analysiert Preise, setzt Schwellwert selbst."
-    },
-    {
-      "parameters": {
-        "endpointUrl": "http://192.168.1.8:7070/mcp",
-        "options": {}
-      },
-      "id": "c3b85d64-ef42-4b9f-abde-ea6316f87da7",
-      "name": "evcc MCP Tools",
-      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
-      "position": [
-        1328,
-        224
-      ],
-      "typeVersion": 1.2,
-      "notes": "Stellt evcc MCP-Tools für Claude bereit. Nur lesende + Batterie-Tools aktiviert."
     },
     {
       "parameters": {
@@ -441,6 +426,88 @@
           "name": "Home Assistant Token"
         }
       }
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.1.8:7070/api/state",
+        "options": {}
+      },
+      "id": "evcc-state-daily",
+      "name": "evcc: State abrufen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        784,
+        -80
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.1.8:7070/api/tariff/grid",
+        "options": {}
+      },
+      "id": "evcc-tarif-daily",
+      "name": "evcc: Tarif abrufen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        784,
+        160
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.threshold_ct }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-daily-charge",
+      "name": "Limit aktiv?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        1648,
+        0
+      ],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://192.168.1.8:7070/api/batterygridchargelimit/' + String(Math.round($json.threshold_ct / 100 * 1000) / 1000) }}",
+        "options": {}
+      },
+      "id": "evcc-limit-setzen-daily",
+      "name": "evcc: Limit setzen",
+      "type": "n8n-nodes-base.httpRequest",
+      "onError": "continueRegularOutput",
+      "position": [
+        1872,
+        -80
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "http://192.168.1.8:7070/api/batterygridchargelimit",
+        "options": {}
+      },
+      "id": "evcc-limit-entfernen-daily",
+      "name": "evcc: Limit entfernen",
+      "type": "n8n-nodes-base.httpRequest",
+      "onError": "continueRegularOutput",
+      "position": [
+        1872,
+        80
+      ],
+      "typeVersion": 4.4
     }
   ],
   "pinData": {},
@@ -511,17 +578,6 @@
         ]
       ]
     },
-    "evcc MCP Tools": {
-      "ai_tool": [
-        [
-          {
-            "node": "Claude Sonnet + evcc MCP",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Claude Sonnet 4.6": {
       "ai_languageModel": [
         [
@@ -549,6 +605,11 @@
         [
           {
             "node": "HA: Status aktualisieren",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Limit aktiv?",
             "type": "main",
             "index": 0
           }
@@ -630,7 +691,47 @@
       "main": [
         [
           {
+            "node": "evcc: State abrufen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "evcc: State abrufen": {
+      "main": [
+        [
+          {
+            "node": "evcc: Tarif abrufen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "evcc: Tarif abrufen": {
+      "main": [
+        [
+          {
             "node": "Verbrauch berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit aktiv?": {
+      "main": [
+        [
+          {
+            "node": "evcc: Limit setzen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "evcc: Limit entfernen",
             "type": "main",
             "index": 0
           }

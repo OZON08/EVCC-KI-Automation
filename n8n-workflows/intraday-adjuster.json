@@ -145,188 +145,7 @@
     },
     {
       "parameters": {
-        "url": "http://a0d7b954-influxdb:8086/query",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBasicAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "db",
-              "value": "evcc"
-            },
-            {
-              "name": "q",
-              "value": "SELECT mean(\"value\") * 100 FROM \"tariffGrid\" WHERE time > now() - 90d GROUP BY time(1h)"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "d4e5f6a7-b8c9-0123-def0-234567890123",
-      "name": "InfluxDB: Tibber Preisstats",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        896,
-        -160
-      ],
-      "typeVersion": 4.4,
-      "credentials": {
-        "httpBasicAuth": {
-          "id": "r61FJRKq9t50s9A7",
-          "name": "InfluxDB evcc"
-        }
-      },
-      "notes": "Historische Tibber-Preise (90 Tage, ct/kWh nach ×100). Für Preiskontext: ist der aktuelle Preis günstig oder teuer?"
-    },
-    {
-      "parameters": {
-        "url": "http://a0d7b954-influxdb:8086/query",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBasicAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "db",
-              "value": "evcc"
-            },
-            {
-              "name": "q",
-              "value": "SELECT integral(\"value\") / 3600000 as energy_kwh FROM \"homePower\" WHERE time > now() - 28d GROUP BY time(1d) fill(none)"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "e5f6a7b8-c9d0-1234-ef01-345678901234",
-      "name": "InfluxDB: Verbrauch abfragen",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        1120,
-        -160
-      ],
-      "typeVersion": 4.4,
-      "credentials": {
-        "httpBasicAuth": {
-          "id": "r61FJRKq9t50s9A7",
-          "name": "InfluxDB evcc"
-        }
-      },
-      "notes": "28-Tage-Verbrauchsdurchschnitt (gleicher Wochentag bevorzugt) als Referenz für täglichen Bedarf."
-    },
-    {
-      "parameters": {
-        "url": "http://a0d7b954-influxdb:8086/query",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBasicAuth",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "db",
-              "value": "evcc"
-            },
-            {
-              "name": "q",
-              "value": "SELECT integral(\"value\") / 3600000 FROM \"homePower\" WHERE time > now() - 28d GROUP BY time(1h) fill(0)"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "influxdb-lastprofil-intraday",
-      "name": "InfluxDB: Lastprofil abfragen",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        1232,
-        -160
-      ],
-      "typeVersion": 4.4,
-      "credentials": {
-        "httpBasicAuth": {
-          "id": "r61FJRKq9t50s9A7",
-          "name": "InfluxDB evcc"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const tariffRaw = $('InfluxDB: Tibber Preisstats').first()?.json ?? {};\nconst homeRaw = $('InfluxDB: Verbrauch abfragen').first()?.json ?? {};\nconst profileRaw = $input.first()?.json ?? {};\n\nconst einspeiseAktiv = $('HA: Einspeise-Schalter lesen').first()?.json?.state === 'on';\nconst minSoc = parseFloat($('HA: Min-SoC lesen').first()?.json?.state) || 30;\n\nconst tariffSeries = tariffRaw?.results?.[0]?.series?.[0]?.values ?? [];\nconst todayWeekday = new Date().getDay();\n\nconst sameWeekdayPrices = tariffSeries\n  .filter(([time]) => new Date(time).getDay() === todayWeekday)\n  .map(([, price]) => price)\n  .filter(p => typeof p === 'number' && p > 0);\n\nconst allPrices = tariffSeries\n  .map(([, price]) => price)\n  .filter(p => typeof p === 'number' && p > 0);\n\nconst prices = sameWeekdayPrices.length >= 10 ? sameWeekdayPrices : allPrices;\nconst priceSource = sameWeekdayPrices.length >= 10 ? 'gleicher Wochentag (90 Tage)' : 'alle Wochentage (90 Tage)';\n\nconst avg_price = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 20;\nconst min_price = prices.length > 0 ? Math.min(...prices) : 10;\nconst max_price = prices.length > 0 ? Math.max(...prices) : 40;\n\nconst homeSeries = homeRaw?.results?.[0]?.series?.[0]?.values ?? [];\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst targetWeekday = tomorrow.getDay();\n\nconst sameWeekday = homeSeries\n  .filter(([time, kwh]) => new Date(time).getDay() === targetWeekday && kwh > 1)\n  .map(([, kwh]) => kwh);\n\nconst allDays = homeSeries\n  .filter(([, kwh]) => kwh > 1)\n  .map(([, kwh]) => kwh);\n\nconst homeValues = sameWeekday.length >= 2 ? sameWeekday : allDays;\nconst avg_consumption = homeValues.length > 0\n  ? homeValues.reduce((a, b) => a + b, 0) / homeValues.length\n  : 10;\n\nconst avgRounded = Math.round(avg_consumption * 10) / 10;\nconst avgPriceRounded = Math.round(avg_price * 10) / 10;\nconst minPriceRounded = Math.round(min_price * 10) / 10;\nconst maxPriceRounded = Math.round(max_price * 10) / 10;\n\n\n// Lastprofil nächste 6 Stunden berechnen\nconst profileSeries = profileRaw?.results?.[0]?.series?.[0]?.values ?? [];\nconst offsetHours = -new Date().getTimezoneOffset() / 60;\nconst currentHour = new Date().getHours();\nconst weekday = new Date().getDay();\nconst byHour = {};\nfor (let h = 0; h < 24; h++) byHour[h] = [];\n\nprofileSeries\n  .filter(([time]) => {\n    const local = new Date(new Date(time).getTime() + offsetHours * 3600000);\n    return local.getDay() === weekday;\n  })\n  .forEach(([time, kwh]) => {\n    const local = new Date(new Date(time).getTime() + offsetHours * 3600000);\n    const hour = local.getHours();\n    if (kwh !== null && kwh > 0) byHour[hour].push(kwh);\n  });\n\nconst next6Hours = [];\nfor (let i = 0; i < 6; i++) {\n  const h = (currentHour + i) % 24;\n  const vals = byHour[h];\n  next6Hours.push({\n    hour: h,\n    avg_kwh: vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 100) / 100 : 0,\n    samples: vals.length\n  });\n}\n\nconst profileDays = Math.max(...next6Hours.map(p => p.samples), 0);\nconst profileSection = profileDays >= 4\n  ? '\\n\\nStündliches Verbrauchsprofil (nächste 6h, gleicher Wochentag, ' + profileDays + ' Messtage):\\n' +\n    next6Hours.map(p => p.hour.toString().padStart(2, '0') + ':00: ' + p.avg_kwh + ' kWh').join(' | ') +\n    '\\n\\nStunden mit hohem Verbrauch: SoC-Reserve einplanen.'\n  : '';\n\nconst prompt = 'Ueberpruefe den Batterie-Preisschwellwert fuer den Rest des Tages und passe ihn bei Bedarf an.\\n\\n' +\n  'Historische Tibber-Preise (' + priceSource + '):\\n' +\n  '- Durchschnitt: ' + avgPriceRounded + ' ct/kWh | Minimum: ' + minPriceRounded + ' ct/kWh | Maximum: ' + maxPriceRounded + ' ct/kWh\\n\\n' +\n  'Erwarteter Tagesverbrauch: ' + avgRounded + ' kWh\\n\\n' +\n  'Vorgehen:\\n' +\n  '1. Rufe getState auf: SoC, aktuelle PV-Leistung, Solar-Prognose rest heute und morgen\\n' +\n  '2. Rufe getTariffInfo mit type=grid auf: Tibber-Preise rest heute und morgen\\n' +\n  '3. Ladeentscheidung (charge_action):\\n' +\n  '   Verfuegbare Kapazitaet = (1 - SoC/100) * 7.6 kWh\\n' +\n  '   Restbedarf = verbleibender Tagesverbrauch - restliche Solar-Prognose heute - verfuegbare Kapazitaet\\n' +\n  '   - Wenn Restbedarf <= 0: charge_action = \"remove\"\\n' +\n  '   - Wenn Restbedarf > 0 und guenstige Slots verfuegbar (unter historischem Durchschnitt): charge_action = \"update\" mit threshold_ct\\n' +\n  '   - Sonst: charge_action = \"keep\"\\n' +\n  '4. Einspeise-Entscheidung (discharge_action):\\n' +\n  '   Einspeise-Logik aktiv: ' + (einspeiseAktiv ? 'ja' : 'nein') + '\\n' +\n  '   Minimaler SoC fuer Einspeisen: ' + minSoc + '%\\n' +\n  '   Einspeiseverguetung: 6.7 ct/kWh (fix)\\n' +\n  '   - Wenn Einspeise-Logik aus: discharge_action = \"disable\"\\n' +\n  '   - Wenn an UND SoC > ' + minSoc + '% UND Solar+SoC deckt Restbedarf UND aktueller Tibber-Preis > 6.7 ct: discharge_action = \"enable\"\\n' +\n  '   - Sonst: discharge_action = \"disable\"\\n' +\n  '5. Bei charge_action \"update\": setBatteryGridChargeLimit aufrufen (Wert in EUR/kWh)\\n' +\n  '6. Bei charge_action \"remove\": removeBatteryGridChargeLimit aufrufen\\n' +\n  '7. Bei discharge_action: n8n setzt batterydischargecontrol (kein MCP-Aufruf noetig)\\n\\n' +\n  'Antworte IMMER mit validem JSON: { \"charge_action\": \"keep\", \"threshold_ct\": 0, \"discharge_action\": \"disable\", \"reasoning\": \"<kurze deutsche Begruendung>\" }' + profileSection;\n\nreturn [{ json: {\n  avg_consumption_kwh: avgRounded,\n  avg_price_ct: avgPriceRounded,\n  min_price_ct: minPriceRounded,\n  max_price_ct: maxPriceRounded,\n  price_source: priceSource,\n  einspeise_aktiv: einspeiseAktiv,\n  min_soc: minSoc,\n  prompt\n}}];"
-      },
-      "id": "f6a7b8c9-d0e1-2345-f012-456789012345",
-      "name": "Kontext berechnen",
-      "type": "n8n-nodes-base.code",
-      "position": [
-        1344,
-        -160
-      ],
-      "typeVersion": 2,
-      "notes": "Kombiniert tariffGrid-Statistik (Min/Avg/Max für gleichen Wochentag) mit Verbrauchsdurchschnitt und Einspeise-Parametern. Baut Prompt für Claude."
-    },
-    {
-      "parameters": {
-        "promptType": "define",
-        "text": "={{ $json.prompt }}",
-        "options": {
-          "systemMessage": "Du bist ein Energieoptimierungs-Agent für eine Hausbatterie.\nSpecs: 7,6 kWh Kapazität, max. 7 kW Ladeleistung, Einspeisevergütung 6,7 ct/kWh.\nDu hast Zugriff auf evcc via MCP-Tools. Nutze sie um den aktuellen Zustand zu lesen und den Schwellwert anzupassen.\nWichtig: setBatteryGridChargeLimit erwartet den Wert in EUR/kWh (nicht ct). Beispiel: 10 ct = 0.10 EUR.\nNur bei charge_action=update oder charge_action=remove einen API-Aufruf machen. Bei charge_action=keep nichts tun.\nDie discharge_action wird von n8n umgesetzt – du musst keinen evcc-API-Aufruf dafür machen.\nGib am Ende IMMER valides JSON zurück: { \"charge_action\": \"keep\"|\"update\"|\"remove\", \"threshold_ct\": <Zahl>, \"discharge_action\": \"enable\"|\"disable\", \"reasoning\": \"<Text>\" }\nDas Haus hat eine Wallbox mit 2 E-Fahrzeugen. Prüfe in getState die loadpoints[]:\n- Lädt gerade ein Fahrzeug (chargePower > 0)? Setze discharge_action=disable solange aktiv geladen wird.\n- Ist ein Fahrzeug angeschlossen das noch Energie braucht? Berücksichtige dies beim Restbedarf."
-        }
-      },
-      "id": "a7b8c9d0-e1f2-3456-0123-567890123456",
-      "name": "Claude Sonnet + evcc MCP",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "position": [
-        1568,
-        -160
-      ],
-      "typeVersion": 3.1,
-      "notes": "Claude liest SoC + PV-Prognose + Tibber-Preise via MCP, entscheidet ob Anpassung nötig und setzt Schwellwert direkt."
-    },
-    {
-      "parameters": {
-        "endpointUrl": "http://192.168.1.8:7070/mcp",
-        "options": {}
-      },
-      "id": "b8c9d0e1-f2a3-4567-1234-678901234567",
-      "name": "evcc MCP Tools",
-      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
-      "position": [
-        1776,
-        64
-      ],
-      "typeVersion": 1.2,
-      "notes": "evcc MCP: getState, getTariffInfo, setBatteryGridChargeLimit, removeBatteryGridChargeLimit"
-    },
-    {
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "claude-sonnet-4-6",
-          "mode": "list",
-          "cachedResultName": "Claude Sonnet 4.6"
-        },
-        "options": {
-          "temperature": 0
-        }
-      },
-      "id": "c9d0e1f2-a3b4-5678-2345-789012345678",
-      "name": "Claude Sonnet 4.6",
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "position": [
-        1568,
-        128
-      ],
-      "typeVersion": 1.3,
-      "credentials": {
-        "anthropicApi": {
-          "id": "zcVdqqwObP1JOxql",
-          "name": "Anthropic – Claude Sonnet"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const item = $input.first() ?? $input.item;\nconst data = item?.json ?? {};\n\nconst response = data.output\n  ?? data.text\n  ?? data.message\n  ?? data.content\n  ?? JSON.stringify(data);\n\nlet action = 'keep';\nlet threshold = 0;\nlet reasoning = 'Keine Begruendung';\nlet dischargeAction = 'disable';\n\nconst allMatches = [...String(response).matchAll(/\\{[^{}]*\"charge_action\"[^{}]*\\}/g)];\nconst jsonMatch = allMatches.length > 0 ? allMatches[allMatches.length - 1][0] : null;\nif (jsonMatch) {\n  try {\n    const parsed = JSON.parse(jsonMatch);\n    action = parsed.charge_action ?? 'keep';\n    threshold = parseFloat(parsed.threshold_ct ?? 0);\n    reasoning = parsed.reasoning ?? reasoning;\n    dischargeAction = parsed.discharge_action ?? 'disable';\n  } catch(e) {}\n}\n\nif (!['keep', 'update', 'remove'].includes(action)) {\n  const actionMatch = String(response).match(/\"charge_action\"[^\"]*\"([^\"]+)\"/);\n  if (actionMatch) action = actionMatch[1];\n}\n\nif (!['enable', 'disable'].includes(dischargeAction)) dischargeAction = 'disable';\nif (isNaN(threshold)) threshold = 0;\nthreshold = Math.min(50, Math.max(0, threshold));\n\nreturn [{ json: {\n  action,\n  charge_action: action,\n  threshold_ct: threshold,\n  discharge_action: dischargeAction,\n  reasoning,\n  timestamp: new Date().toISOString()\n}}];"
+        "jsCode": "const d = $input.first()?.json ?? {};\nconst action = ['keep','update','remove'].includes(d.charge_action) ? d.charge_action : 'keep';\nconst dischargeAction = ['enable','disable'].includes(d.discharge_action) ? d.discharge_action : 'disable';\nconst threshold = Math.min(50, Math.max(0, parseFloat(d.threshold_ct ?? 0)));\nreturn [{ json: { action, charge_action: action, threshold_ct: threshold, discharge_action: dischargeAction, reasoning: d.reasoning ?? '', timestamp: d.timestamp ?? new Date().toISOString() } }];"
       },
       "id": "d0e1f2a3-b4c5-6789-3456-890123456789",
       "name": "Ergebnis extrahieren",
@@ -418,7 +237,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const usage = $('Claude Sonnet + evcc MCP').first()?.json?.tokenUsage ?? {};\nconst inputTokens = usage.inputTokens ?? usage.prompt_tokens ?? 5000;\nconst outputTokens = usage.outputTokens ?? usage.completion_tokens ?? 450;\nconst cost_usd = (inputTokens / 1000000 * 3) + (outputTokens / 1000000 * 15);\nconst costRounded = Math.round(cost_usd * 100000) / 100000;\nreturn [{ json: {\n  workflow: 'intraday',\n  input_tokens: inputTokens,\n  output_tokens: outputTokens,\n  cost_usd: costRounded,\n  timestamp: new Date().toISOString(),\n  line_protocol: 'ai_costs,workflow=intraday input_tokens=' + inputTokens + 'i,output_tokens=' + outputTokens + 'i,cost_usd=' + costRounded\n}}];"
+        "jsCode": "return [{ json: {\n  workflow: 'intraday', input_tokens: 0, output_tokens: 0, cost_usd: 0,\n  timestamp: new Date().toISOString(),\n  line_protocol: 'ai_costs,workflow=intraday input_tokens=0i,output_tokens=0i,cost_usd=0.0'\n} }];"
       },
       "id": "token-kosten-intraday",
       "name": "Token: Kosten berechnen",
@@ -488,6 +307,145 @@
           "name": "Home Assistant Token"
         }
       }
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.1.8:7070/api/state",
+        "options": {}
+      },
+      "id": "evcc-state-abrufen",
+      "name": "evcc: State abrufen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        896,
+        -320
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "url": "http://192.168.1.8:7070/api/tariff/grid",
+        "options": {}
+      },
+      "id": "evcc-tarif-abrufen",
+      "name": "evcc: Tarif abrufen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1120,
+        -320
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "url": "http://homeassistant:8123/api/states/sensor.battery_charge_threshold",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "ha-schwellwert-lesen",
+      "name": "HA: Schwellwert lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1344,
+        -320
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Eingangsdaten\nconst stateRaw = $('evcc: State abrufen').first()?.json ?? {};\nconst tariffRaw = $('evcc: Tarif abrufen').first()?.json ?? {};\nconst schwellwertStr = $('HA: Schwellwert lesen').first()?.json?.state ?? '0';\nconst einspeiseAktiv = $('HA: Einspeise-Schalter lesen').first()?.json?.state === 'on';\nconst minSoc = parseFloat($('HA: Min-SoC lesen').first()?.json?.state) || 30;\n\n// evcc State\nconst state = stateRaw?.result ?? stateRaw;\nconst soc = parseFloat(state?.batterySoc ?? 50);\nconst loadpoints = state?.loadpoints ?? [];\nconst evLaedt = loadpoints.some(lp => (lp.chargePower ?? 0) > 0);\n\n// Aktuellen Tibber-Preis ermitteln\nconst rates = tariffRaw?.result?.rates ?? tariffRaw?.rates ?? [];\nconst now = new Date();\nconst currentRate = rates.find(r => new Date(r.start) <= now && now < new Date(r.end));\nconst currentPriceCt = currentRate ? Math.round(currentRate.price * 10000) / 100 : null;\n\n// Guenstigsten Preis naechste 2h\nconst in2h = new Date(now.getTime() + 2 * 3600000);\nconst upcoming = rates.filter(r => new Date(r.start) >= now && new Date(r.start) < in2h);\nconst minUpcomingCt = upcoming.length > 0\n  ? Math.min(...upcoming.map(r => Math.round(r.price * 10000) / 100))\n  : null;\n\nconst schwellwert = parseFloat(schwellwertStr) || 0;\nconst EINSPEISE_CT = 6.7;\n\n// charge_action\nlet chargeAction = 'keep';\nlet thresholdCt = schwellwert;\n\nif (schwellwert === 0) {\n  chargeAction = 'remove'; thresholdCt = 0;\n} else if (currentPriceCt !== null && currentPriceCt <= schwellwert) {\n  chargeAction = 'update';\n} else if (currentPriceCt !== null && currentPriceCt > schwellwert) {\n  const cheapSoon = minUpcomingCt !== null && minUpcomingCt <= schwellwert;\n  chargeAction = cheapSoon ? 'keep' : 'remove';\n  if (chargeAction === 'remove') thresholdCt = 0;\n}\n\n// discharge_action\nlet dischargeAction = 'disable';\nlet dischargeReason = '';\n\nif (evLaedt) {\n  dischargeReason = 'EV laedt aktiv';\n} else if (!einspeiseAktiv) {\n  dischargeReason = 'Einspeise-Logik aus';\n} else if (soc < minSoc) {\n  dischargeReason = `SoC ${soc}% < Min ${minSoc}%`;\n} else if (currentPriceCt !== null && currentPriceCt > EINSPEISE_CT) {\n  dischargeAction = 'enable';\n  dischargeReason = `Preis ${currentPriceCt}ct > ${EINSPEISE_CT}ct`;\n} else {\n  dischargeReason = `Preis ${currentPriceCt ?? '?'}ct <= ${EINSPEISE_CT}ct`;\n}\n\nconst reasoning = `Preis: ${currentPriceCt ?? '?'}ct | Schwellwert: ${schwellwert}ct -> ${chargeAction}; SoC: ${soc}% | ${dischargeReason} -> discharge ${dischargeAction}`;\n\nreturn [{ json: { charge_action: chargeAction, threshold_ct: thresholdCt, discharge_action: dischargeAction, reasoning, timestamp: new Date().toISOString() } }];"
+      },
+      "id": "entscheidung-berechnen",
+      "name": "Entscheidung berechnen",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1568,
+        -320
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.charge_action }}",
+              "operation": "equals",
+              "value2": "update"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-charge-update",
+      "name": "Laden: Limit setzen?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        2016,
+        -320
+      ],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.charge_action }}",
+              "operation": "equals",
+              "value2": "remove"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-charge-remove",
+      "name": "Laden: Limit entfernen?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        2240,
+        -160
+      ],
+      "typeVersion": 2.3
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://192.168.1.8:7070/api/batterygridchargelimit/' + String(Math.round($('Ergebnis extrahieren').first().json.threshold_ct / 100 * 1000) / 1000) }}",
+        "options": {}
+      },
+      "id": "evcc-limit-setzen",
+      "name": "evcc: Limit setzen",
+      "type": "n8n-nodes-base.httpRequest",
+      "onError": "continueRegularOutput",
+      "position": [
+        2464,
+        -400
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "http://192.168.1.8:7070/api/batterygridchargelimit",
+        "options": {}
+      },
+      "id": "evcc-limit-entfernen",
+      "name": "evcc: Limit entfernen",
+      "type": "n8n-nodes-base.httpRequest",
+      "onError": "continueRegularOutput",
+      "position": [
+        2464,
+        -240
+      ],
+      "typeVersion": 4.4
     }
   ],
   "pinData": {},
@@ -563,73 +521,7 @@
       "main": [
         [
           {
-            "node": "InfluxDB: Tibber Preisstats",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "InfluxDB: Tibber Preisstats": {
-      "main": [
-        [
-          {
-            "node": "InfluxDB: Verbrauch abfragen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "InfluxDB: Verbrauch abfragen": {
-      "main": [
-        [
-          {
-            "node": "InfluxDB: Lastprofil abfragen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Kontext berechnen": {
-      "main": [
-        [
-          {
-            "node": "Claude Sonnet + evcc MCP",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "evcc MCP Tools": {
-      "ai_tool": [
-        [
-          {
-            "node": "Claude Sonnet + evcc MCP",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Claude Sonnet 4.6": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Claude Sonnet + evcc MCP",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Claude Sonnet + evcc MCP": {
-      "main": [
-        [
-          {
-            "node": "Ergebnis extrahieren",
+            "node": "evcc: State abrufen",
             "type": "main",
             "index": 0
           }
@@ -651,6 +543,11 @@
           },
           {
             "node": "Token: Kosten berechnen",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Laden: Limit setzen?",
             "type": "main",
             "index": 0
           }
@@ -691,15 +588,78 @@
         ]
       ]
     },
-    "InfluxDB: Lastprofil abfragen": {
+    "evcc: State abrufen": {
       "main": [
         [
           {
-            "node": "Kontext berechnen",
+            "node": "evcc: Tarif abrufen",
             "type": "main",
             "index": 0
           }
         ]
+      ]
+    },
+    "evcc: Tarif abrufen": {
+      "main": [
+        [
+          {
+            "node": "HA: Schwellwert lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HA: Schwellwert lesen": {
+      "main": [
+        [
+          {
+            "node": "Entscheidung berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entscheidung berechnen": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis extrahieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Laden: Limit setzen?": {
+      "main": [
+        [
+          {
+            "node": "evcc: Limit setzen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Laden: Limit entfernen?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Laden: Limit entfernen?": {
+      "main": [
+        [
+          {
+            "node": "evcc: Limit entfernen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },
