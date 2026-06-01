@@ -14,7 +14,7 @@ Täglich um 14:00 Uhr läuft der Daily Optimizer in n8n:
 6. n8n schreibt Ergebnis + Begründung nach Home Assistant
 
 Zusätzlich laufen:
-- **Intraday Adjuster** (stündlich 6–22 Uhr): regelbasiert, passt Schwellwert anhand aktuellem Tibber-Preis vs. Daily-Schwellwert an, steuert Netzeinspeisung
+- **Intraday Adjuster** (stündlich 24/7): regelbasiert, passt Schwellwert anhand aktuellem Tibber-Preis vs. Daily-Schwellwert an, steuert Netzeinspeisung – auch nachts für günstige Ladezeiten
 - **Savings Tracker** (täglich 23:55): berechnet KI-Ersparnis vs. Tagesdurchschnittspreis
 - **Safety Monitor** (alle 15 min): überwacht SoC-Grenzen
 - **HA Override Handler**: reagiert sofort auf HA-Schalter-Änderungen via Webhook
@@ -36,7 +36,7 @@ Zusätzlich laufen:
 | Workflow | Trigger | Funktion |
 |----------|---------|---------|
 | Daily Optimizer | täglich 14:00 + sofort bei KI-Aktivierung + Webhook | Preisschwellwert für morgen per Claude berechnen |
-| Intraday Adjuster | stündlich 6–22 Uhr (konfigurierbar) | Regelbasiert: Schwellwert prüfen, Einspeisung steuern |
+| Intraday Adjuster | stündlich 24/7 | Regelbasiert: Schwellwert prüfen, Einspeisung steuern, nächtliches Laden optimieren |
 | Savings Tracker | täglich 23:55 + Webhook | Ersparnis vs. Tagesdurchschnitt berechnen |
 | Safety Monitor | alle 15 Minuten | SoC-Grenzen überwachen |
 | HA Override Handler | Webhook von HA-Schaltern | Sofortreaktion auf manuelle Eingriffe |
