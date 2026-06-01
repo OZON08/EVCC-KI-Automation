@@ -451,17 +451,6 @@
   ],
   "pinData": {},
   "connections": {
-    "Trigger: stündlich 6–22 Uhr": {
-      "main": [
-        [
-          {
-            "node": "HA: KI-Schalter prüfen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "HA: KI-Schalter prüfen": {
       "main": [
         [
@@ -661,6 +650,17 @@
           }
         ],
         []
+      ]
+    },
+    "Trigger: stündlich 0–23 Uhr": {
+      "main": [
+        [
+          {
+            "node": "HA: KI-Schalter prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
