@@ -1,4 +1,4 @@
-# Design: Intraday-Adjuster – Kostenreduktion (Ansatz B)
+# Design: Intraday-Adjuster – Kostenreduktion (Ansatz B+C)
 
 **Datum:** 2026-06-01  
 **Status:** Approved  
@@ -6,112 +6,122 @@
 
 ---
 
-## Kontext
+## Entscheidung
 
-Der Intraday-Adjuster läuft stündlich 6–22 Uhr (17x/Tag). Aktuell ist Claude als **Agent** konfiguriert: er ruft selbst `getState` und `getTariffInfo` via MCP auf, der Kontext wächst über 3–4 Turns auf ~15.000 Input-Tokens pro Lauf. Mit Claude Sonnet 4.6 ($3/1M input, $15/1M output) entstehen so ~€4+/Tag.
+| Workflow | Vorher | Nachher |
+|---|---|---|
+| Daily Optimizer | Claude Sonnet 4.6 (Agent) | Claude Sonnet 4.6 (Agent) – **unverändert** |
+| Intraday Adjuster | Claude Sonnet 4.6 (Agent) | **Deterministisch (kein LLM)** |
 
-Der Daily Optimizer (1x/Tag) bleibt vorerst unverändert.
+Claude plant die Strategie einmal täglich (Preisschwellwert). Der Intraday-Adjuster vollzieht sie stündlich per Regeln – kein API-Call nötig.
 
----
-
-## Ziel-Architektur
-
-Claude wird vom **Executor** zum **Entscheider**. n8n holt alle Daten, Claude bekommt einen fertigen Kontext und gibt JSON zurück. Kein Agent-Loop, keine Tool-Calls.
-
-### Vorher (multi-turn Agent)
-```
-n8n → Claude Agent
-         ↓ tool: getState (MCP)
-         ↓ tool: getTariffInfo (MCP)
-         ↓ tool: setBatteryGridChargeLimit (MCP)
-       ~15.000 Input-Tokens, Sonnet 4.6
-```
-
-### Nachher (single-turn Chat)
-```
-n8n → GET /api/state          ─┐
-n8n → GET /api/tariff/grid    ─┤ Code-Node (verdichten)
-n8n → InfluxDB (unverändert)  ─┘
-        ↓
-      Claude Haiku 4.5 (1 Turn, kein Agent)
-        ↓ JSON-Entscheidung
-n8n → POST/DELETE /api/batterygridchargelimit (direkt)
-n8n → batterydischargecontrol (unverändert)
-```
-
-**Geschätzte Kosten nach Umbau:** ~$0.002/Run × 17 = ~$0.034/Tag ≈ €0.03/Tag
+**Kosten nach Umbau:**
+- Daily Optimizer: ~€0.01–0.02/Tag (unverändert, vernachlässigbar)
+- Intraday Adjuster: **€0.00/Tag**
+- Gesamt: ~€0.01–0.02/Tag statt ~€4+/Tag
 
 ---
 
-## Änderungen am Workflow
+## Ziel-Architektur Intraday
 
-### Nodes entfernen
+### Vorher
+```
+n8n → InfluxDB → Claude Agent (multi-turn, MCP-Tools) → Entscheidung
+```
+
+### Nachher
+```
+n8n → evcc GET /api/state          ─┐
+n8n → evcc GET /api/tariff/grid    ─┤ Code-Node (Regelwerk)
+n8n → HA: Schwellwert lesen        ─┘
+        ↓ charge_action + discharge_action
+n8n → evcc: Limit setzen/entfernen (direkt)
+n8n → evcc: Discharge steuern (unverändert)
+```
+
+---
+
+## Regelwerk (Code-Node)
+
+### Datenbeschaffung (neu)
+- `GET http://192.168.1.8:7070/api/state` → SoC, chargePower pro Loadpoint, vehiclePresent
+- `GET http://192.168.1.8:7070/api/tariff/grid` → aktueller Preis + nächste 2h
+- `GET http://homeassistant:8123/api/states/sensor.battery_charge_threshold` → Tagesschwellwert von Claude (Daily Optimizer)
+- HA: Einspeise-Schalter, Min-SoC (unverändert)
+
+### charge_action
+
+```
+aktueller_preis = Tibber-Preis jetzt (ct/kWh)
+schwellwert = sensor.battery_charge_threshold (ct/kWh)
+naechster_guenstiger_slot = min(Preise nächste 2h) < schwellwert
+
+wenn aktueller_preis <= schwellwert:
+  → charge_action = "update", threshold_ct = schwellwert
+
+sonst wenn aktueller_preis > schwellwert UND NICHT naechster_guenstiger_slot:
+  → charge_action = "remove"
+
+sonst:
+  → charge_action = "keep"
+```
+
+### discharge_action
+
+```
+ev_laedt = any(loadpoint.chargePower > 0)
+einspeise_aktiv = HA input_boolean.einspeise_logik_aktiv == "on"
+soc = batterySoc
+min_soc = HA input_number.min_soc_einspeisen
+einspeiseverguetung = 6.7 ct/kWh
+
+wenn ev_laedt:
+  → discharge_action = "disable"  (Priorität: EV-Laden)
+
+sonst wenn NICHT einspeise_aktiv:
+  → discharge_action = "disable"
+
+sonst wenn soc < min_soc:
+  → discharge_action = "disable"
+
+sonst wenn aktueller_preis > einspeiseverguetung:
+  → discharge_action = "enable"
+
+sonst:
+  → discharge_action = "disable"
+```
+
+### reasoning (für HA-Sensor / Debugging)
+Kurzer String der Entscheidungspfad: z.B. `"Preis 18.2ct > Schwellwert 15ct → keep; EV lädt → discharge disable"`
+
+---
+
+## Nodes entfernen
+
 - `evcc MCP Tools` (mcpClientTool)
 - `Claude Sonnet + evcc MCP` (Agent-Node)
-- `Claude Sonnet 4.6` (LM-Sub-Node des Agents)
+- `Claude Sonnet 4.6` (LM-Sub-Node)
+- `InfluxDB: Tibber Preisstats` (90d-Abfrage – nicht mehr nötig, Schwellwert kommt von Daily Optimizer)
+- `InfluxDB: Verbrauch abfragen` (28d – nicht mehr nötig)
+- `InfluxDB: Lastprofil abfragen` (nicht mehr nötig)
+- `Kontext berechnen` (Code-Node – wird ersetzt)
 
-### Nodes hinzufügen
+## Nodes hinzufügen
 
-**1. `evcc: State abrufen`** – HTTP GET
-```
-GET http://192.168.1.8:7070/api/state
-```
-Keine Auth nötig (lokales Netz).
+- `evcc: State abrufen` (HTTP GET `/api/state`)
+- `evcc: Tarif abrufen` (HTTP GET `/api/tariff/grid`)
+- `HA: Schwellwert lesen` (HTTP GET `sensor.battery_charge_threshold`)
+- `Entscheidung berechnen` (Code-Node mit Regelwerk oben)
+- `evcc: Limit setzen` (HTTP POST `/api/batterygridchargelimit/{wert}`)
+- `evcc: Limit entfernen` (HTTP DELETE `/api/batterygridchargelimit`)
 
-**2. `evcc: Tarif abrufen`** – HTTP GET
-```
-GET http://192.168.1.8:7070/api/tariff/grid
-```
+## Nodes unverändert
 
-**3. `Kontext verdichten`** – Code-Node (ersetzt/erweitert bestehenden `Kontext berechnen`)
-
-Extrahiert aus dem evcc-State:
-- `batterySoc`, `batteryPower`
-- `solarForecast` (heute Rest + morgen)
-- Pro Loadpoint: `vehiclePresent`, `chargePower`, `planTime`, `planEnergy`
-
-Extrahiert aus Tarif:
-- Nur nächste 12h Preise (nicht 48h)
-
-Baut kompakten Prompt (deklarativ, keine Prozedur-Schritte):
-```
-Batterie: SoC 72%, 2.2 kWh frei
-Solar-Prognose: heute noch 1.4 kWh | morgen 12.8 kWh
-Loadpoint 1: kein Fahrzeug
-Loadpoint 2: lädt, 8 kWh ausstehend, Plan bis 07:00
-Tibber nächste 12h: 14:00=18.2ct 15:00=17.1ct ... 22:00=24.1ct
-Hist. Preise (90d): Ø19.8ct | Min 9.1ct | Max 38.2ct
-Tagesverbrauch: 12.4 kWh | Restbedarf: ~5.1 kWh
-Einspeise-Logik: an | Min-SoC: 30%
-
-Entscheide und antworte NUR mit JSON:
-{"charge_action":"keep"|"update"|"remove","threshold_ct":0,"discharge_action":"enable"|"disable","reasoning":"<kurz>"}
-```
-
-**4. `Claude Haiku` (Chat-Node, kein Agent)**
-- Model: `claude-haiku-4-5-20251001`
-- Temperature: 0
-- System: `Du bist ein Batterie-Entscheidungs-Agent. Antworte NUR mit validem JSON, kein Text davor oder danach.`
-- Input: User-Message = fertiger Kontext-String
-
-**5. `evcc: Limit setzen`** – HTTP POST (bei charge_action=update)
-```
-POST http://192.168.1.8:7070/api/batterygridchargelimit/{value_eur}
-```
-Hinweis: Exaktes API-Format beim ersten Run gegen evcc verifizieren (Pfad-Parameter vs. Body). Fallback: MCP direkt per JSON-RPC ansprechen.
-
-**6. `evcc: Limit entfernen`** – HTTP DELETE (bei charge_action=remove)
-```
-DELETE http://192.168.1.8:7070/api/batterygridchargelimit
-```
-
-### Nodes unverändert
 - Trigger, KI-Schalter, Frequenz-Check
-- HA: Einspeise-Schalter, Min-SoC
-- InfluxDB: Tibber-Stats, Verbrauch, Lastprofil
-- `Ergebnis extrahieren` (JSON-Parsing bleibt gleich)
+- HA: Einspeise-Schalter, Min-SoC lesen
+- `Ergebnis extrahieren` (JSON-Parsing – Struktur bleibt gleich)
 - Discharge-Steuerung via `/api/batterydischargecontrol/`
-- HA-Status-Writes, Token-Tracking, InfluxDB-Writes
+- HA-Status-Writes, Token-Tracking (zeigt 0 Tokens), InfluxDB-Writes
 
 ---
 
@@ -119,31 +129,12 @@ DELETE http://192.168.1.8:7070/api/batterygridchargelimit
 
 Virtual sensors via `POST /api/states/` überleben keinen HA-Neustart.
 
-**Fix:** HA-Automation `homeassistant_started` → ruft n8n-Webhook auf, der beide Workflows einmal triggert. Sensoren werden danach sofort neu geschrieben.
-
-Alternativ: `input_number`/`input_text` Helfer in HA definieren – aufwändiger, aber persistiert.
-
-**Empfehlung:** Webhook-Trigger-Automation als schnellste Lösung.
+**Fix:** HA-Automation auf Event `homeassistant_started` → triggert n8n Daily Optimizer Webhook. Sensoren werden danach sofort neu geschrieben.
 
 ---
 
-## Kostenschätzung
+## Offene Punkte zur Verifikation beim ersten Run
 
-| | Vorher | Nachher |
-|---|---|---|
-| Model | Sonnet 4.6 | Haiku 4.5 |
-| Input-Tokens/Run | ~15.000 | ~2.500 |
-| Output-Tokens/Run | ~500 | ~150 |
-| Kosten/Run | ~$0.05 | ~$0.002 |
-| Läufe/Tag | 17 | 17 |
-| **Kosten/Tag** | **~€0.85+** | **~€0.03** |
-
-Reale Kosten waren höher (~€4/Tag), vermutlich durch MCP-Responses die größer als erwartet sind. Der single-turn Ansatz ist unabhängig davon deterministisch günstiger.
-
----
-
-## Nicht im Scope
-
-- Daily Optimizer bleibt unverändert (1x/Tag, vernachlässigbare Kosten)
-- Kein Umbau auf deterministische Logik (Ansatz C) – bleibt Fallback
-- Keine Änderung an savings-tracker, ha-override-handler, safety-monitor
+- Exakter evcc REST-Endpunkt für Battery Grid Charge Limit (POST-Format: Pfadparameter vs. Body). Fallback: weiterhin MCP via JSON-RPC aus n8n heraus.
+- Struktur von `/api/state` Response (Feldnamen für SoC, loadpoints, solarForecast).
+- Struktur von `/api/tariff/grid` Response (Feldname für aktuellen Preis).
