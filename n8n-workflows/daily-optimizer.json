@@ -1,5 +1,5 @@
 {
-  "name": "Battery AI â€“ Daily Optimizer",
+  "name": "Battery AI Ã¢â‚¬â€œ Daily Optimizer",
   "nodes": [
     {
       "parameters": {
@@ -13,7 +13,7 @@
         }
       },
       "id": "d4e31765-e259-405e-ae16-16a7073864c7",
-      "name": "Trigger: tÃ¤glich 14:00",
+      "name": "Trigger: tÃƒÂ¤glich 14:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "position": [
         0,
@@ -40,7 +40,7 @@
         "options": {}
       },
       "id": "c2bf8cfe-8e8f-491a-b04b-668601762f61",
-      "name": "HA: KI-Schalter prÃ¼fen",
+      "name": "HA: KI-Schalter prÃƒÂ¼fen",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
         224,
@@ -109,7 +109,7 @@
           "name": "InfluxDB evcc"
         }
       },
-      "notes": "Liest tÃ¤glichen Hausverbrauch der letzten 28 Tage aus InfluxDB. Credential: InfluxDB evcc (HTTP Basic Auth)."
+      "notes": "Liest tÃƒÂ¤glichen Hausverbrauch der letzten 28 Tage aus InfluxDB. Credential: InfluxDB evcc (HTTP Basic Auth)."
     },
     {
       "parameters": {
@@ -148,7 +148,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const data = $('InfluxDB: Verbrauch abfragen').first()?.json ?? {};\nconst profileRaw = $('InfluxDB: Lastprofil abfragen').first()?.json ?? {};\nconst stateRaw = $('evcc: State abrufen').first()?.json ?? {};\nconst tariffRaw = $('evcc: Tarif abrufen').first()?.json ?? {};\nconst series = data?.results?.[0]?.series?.[0]?.values ?? [];\n\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst targetWeekday = tomorrow.getDay();\n\nconst sameWeekday = series\n  .filter(([time, kwh]) => new Date(time).getDay() === targetWeekday && kwh > 1)\n  .map(([, kwh]) => kwh);\nconst allDays = series.filter(([, kwh]) => kwh > 1).map(([, kwh]) => kwh);\nconst values = sameWeekday.length >= 2 ? sameWeekday : allDays;\nconst avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 10;\nconst source = sameWeekday.length >= 2 ? 'gleicher Wochentag' : allDays.length > 0 ? 'Gesamtdurchschnitt' : 'Fallback';\nconst avgRounded = Math.round(avg * 10) / 10;\nconst dataDays = sameWeekday.length || allDays.length;\n\n// evcc State\nconst evccState = stateRaw?.result ?? stateRaw;\nconst soc = parseFloat(evccState?.batterySoc ?? 50);\nconst availableCapacity = Math.round((1 - soc / 100) * 7.6 * 10) / 10;\nconst loadpoints = evccState?.loadpoints ?? [];\n\n// Solar forecast tomorrow\nconst forecastData = evccState?.forecast?.solar?.tomorrow ?? evccState?.pvForecast?.tomorrow ?? [];\nconst solarTomorrow = Array.isArray(forecastData)\n  ? Math.round(forecastData.reduce((s, h) => s + (h.wh ?? h.energy ?? 0), 0) / 1000 * 10) / 10\n  : Math.round((parseFloat(forecastData) || 0) * 10) / 10;\n\n// EV/Wallbox info\nlet evSection = '';\nconst presentLPs = loadpoints.filter(lp => lp.vehiclePresent);\nif (presentLPs.length > 0) {\n  const info = presentLPs.map(lp => {\n    const parts = [];\n    if (lp.planEnergy) parts.push('Ladeenergie: ' + lp.planEnergy + ' kWh');\n    if (lp.planTime) parts.push('bis: ' + lp.planTime);\n    return parts.length ? parts.join(', ') : 'Fahrzeug angeschlossen';\n  }).join(' | ');\n  evSection = '\\nFahrzeug(e): ' + info + '\\nAddiere EV-Energiebedarf zum Tagesverbrauch.';\n}\n\n// Tibber rates for tomorrow\nconst rates = tariffRaw?.result?.rates ?? tariffRaw?.rates ?? [];\nconst tmrStart = new Date(); tmrStart.setDate(tmrStart.getDate() + 1); tmrStart.setHours(0,0,0,0);\nconst tmrEnd = new Date(tmrStart); tmrEnd.setDate(tmrEnd.getDate() + 1);\nconst tomorrowRates = rates\n  .filter(r => new Date(r.start) >= tmrStart && new Date(r.start) < tmrEnd)\n  .sort((a, b) => new Date(a.start) - new Date(b.start));\n\nconst getPrice = r => r?.price ?? r?.value ?? r?.energy;\nconst validRates = tomorrowRates.filter(r => {\n  const p = getPrice(r);\n  return p !== undefined && p !== null && !isNaN(p);\n});\nconst tariffStr = validRates.length > 0\n  ? validRates.map(r => {\n      const h = new Date(r.start).getHours().toString().padStart(2, '0');\n      const ct = Math.round(getPrice(r) * 10000) / 100;\n      return h + ':00: ' + ct + 'ct';\n    }).join(' | ')\n  : tomorrowRates.length > 0\n    ? 'Tarif-Daten vorhanden aber Preisfeld fehlt (Struktur: ' + JSON.stringify(Object.keys(tomorrowRates[0])) + ')'\n    : 'keine Tarif-Daten';\n\n// Load profile\nconst offsetHours = -new Date().getTimezoneOffset() / 60;\nconst byHour = {};\nfor (let h = 0; h < 24; h++) byHour[h] = [];\nconst profileSeries = profileRaw?.results?.[0]?.series?.[0]?.values ?? [];\nprofileSeries\n  .filter(([time]) => new Date(time).getDay() === targetWeekday)\n  .forEach(([time, kwh]) => {\n    const local = new Date(new Date(time).getTime() + offsetHours * 3600000);\n    const hour = local.getHours();\n    if (kwh !== null && kwh > 0) byHour[hour].push(kwh);\n  });\nconst profile = [];\nfor (let h = 0; h < 24; h++) {\n  const vals = byHour[h];\n  profile.push({ hour: h, avg_kwh: vals.length > 0 ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length*100)/100 : 0, samples: vals.length });\n}\nconst profileDays = Math.max(...profile.map(p => p.samples), 0);\nconst profileSection = profileDays >= 4\n  ? '\\n\\nStÃ¼ndliches Verbrauchsprofil (gleicher Wochentag, ' + profileDays + ' Messtage):\\n' +\n    profile.map(p => p.hour.toString().padStart(2,'0') + ':00: ' + p.avg_kwh + ' kWh').join(' | ') +\n    '\\n\\nStunden mit hohem Verbrauch einplanen.'\n  : '';\n\nconst prompt = 'Optimiere die Batterieladekosten fuer morgen.' +\n  '\\n\\nAktuelle Daten:' +\n  '\\nBatterie: SoC ' + soc + '%, verfuegbare Kapazitaet: ' + availableCapacity + ' kWh' +\n  '\\nSolar-Prognose morgen: ' + solarTomorrow + ' kWh' +\n  '\\nErwarteter Tagesverbrauch: ' + avgRounded + ' kWh (' + source + ', ' + dataDays + ' Messtage)' +\n  evSection +\n  '\\n\\nTibber-Preise morgen:\\n' + tariffStr +\n  profileSection +\n  '\\n\\nBerechne den optimalen Preisschwellwert:' +\n  '\\n- Energiebedarf = ' + avgRounded + ' - ' + solarTomorrow + ' (Solar) - ' + availableCapacity + ' (Batterie) kWh' +\n  '\\n- Wenn Bedarf <= 0: threshold_ct = 0 (Solar + Batterie reichen)' +\n  '\\n- Wenn Bedarf > 0: waehle guenstigste Tibber-Slots bis Bedarf gedeckt, Schwellwert = hoechster Slot-Preis x 1.05' +\n  '\\n- n8n setzt den Schwellwert â€“ mache KEINEN evcc-API-Aufruf' +\n  '\\n\\nAntworte NUR mit JSON: { \"threshold_ct\": <Zahl in ct/kWh>, \"reasoning\": \"<kurze Begruendung>\" }';\n\nreturn [{ json: { avg_consumption_kwh: avgRounded, data_days: dataDays, source, soc, solar_tomorrow_kwh: solarTomorrow, prompt } }];"
+        "jsCode": "const data = $('InfluxDB: Verbrauch abfragen').first()?.json ?? {};\nconst profileRaw = $('InfluxDB: Lastprofil abfragen').first()?.json ?? {};\nconst stateRaw = $('evcc: State abrufen').first()?.json ?? {};\nconst tariffRaw = $('evcc: Tarif abrufen').first()?.json ?? {};\nconst series = data?.results?.[0]?.series?.[0]?.values ?? [];\n\nconst tomorrow = new Date();\ntomorrow.setDate(tomorrow.getDate() + 1);\nconst targetWeekday = tomorrow.getDay();\n\nconst sameWeekday = series\n  .filter(([time, kwh]) => new Date(time).getDay() === targetWeekday && kwh > 1)\n  .map(([, kwh]) => kwh);\nconst allDays = series.filter(([, kwh]) => kwh > 1).map(([, kwh]) => kwh);\nconst values = sameWeekday.length >= 2 ? sameWeekday : allDays;\nconst avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 10;\nconst source = sameWeekday.length >= 2 ? 'gleicher Wochentag' : allDays.length > 0 ? 'Gesamtdurchschnitt' : 'Fallback';\nconst avgRounded = Math.round(avg * 10) / 10;\nconst dataDays = sameWeekday.length || allDays.length;\n\n// evcc State\nconst evccState = stateRaw?.result ?? stateRaw;\nconst soc = parseFloat(evccState?.batterySoc ?? 50);\nconst availableCapacity = Math.round((1 - soc / 100) * 7.6 * 10) / 10;\nconst loadpoints = evccState?.loadpoints ?? [];\n\n// Solar forecast tomorrow\nconst forecastData = evccState?.forecast?.solar?.tomorrow ?? evccState?.pvForecast?.tomorrow ?? [];\nconst solarTomorrow = Array.isArray(forecastData)\n  ? Math.round(forecastData.reduce((s, h) => s + (h.wh ?? h.energy ?? 0), 0) / 1000 * 10) / 10\n  : Math.round((parseFloat(forecastData) || 0) * 10) / 10;\n\n// EV/Wallbox info\nlet evSection = '';\nconst presentLPs = loadpoints.filter(lp => lp.vehiclePresent);\nif (presentLPs.length > 0) {\n  const info = presentLPs.map(lp => {\n    const parts = [];\n    if (lp.planEnergy) parts.push('Ladeenergie: ' + lp.planEnergy + ' kWh');\n    if (lp.planTime) parts.push('bis: ' + lp.planTime);\n    return parts.length ? parts.join(', ') : 'Fahrzeug angeschlossen';\n  }).join(' | ');\n  evSection = '\\nFahrzeug(e): ' + info + '\\nAddiere EV-Energiebedarf zum Tagesverbrauch.';\n}\n\n// Tibber rates for tomorrow\nconst rates = tariffRaw?.result?.rates ?? tariffRaw?.rates ?? [];\nconst tmrStart = new Date(); tmrStart.setDate(tmrStart.getDate() + 1); tmrStart.setHours(0,0,0,0);\nconst tmrEnd = new Date(tmrStart); tmrEnd.setDate(tmrEnd.getDate() + 1);\nconst tomorrowRates = rates\n  .filter(r => new Date(r.start) >= tmrStart && new Date(r.start) < tmrEnd)\n  .sort((a, b) => new Date(a.start) - new Date(b.start));\n\nconst getPrice = r => r?.value ?? r?.price;\nconst validRates = tomorrowRates.filter(r => {\n  const p = getPrice(r);\n  return p !== undefined && p !== null && !isNaN(p);\n});\nconst tariffStr = validRates.length > 0\n  ? validRates.map(r => {\n      const h = new Date(r.start).getHours().toString().padStart(2, '0');\n      const ct = Math.round(getPrice(r) * 10000) / 100;\n      return h + ':00: ' + ct + 'ct';\n    }).join(' | ')\n  : tomorrowRates.length > 0\n    ? 'Tarif-Daten vorhanden aber Preisfeld fehlt (Struktur: ' + JSON.stringify(Object.keys(tomorrowRates[0])) + ')'\n    : 'keine Tarif-Daten';\n\n// Load profile\nconst offsetHours = -new Date().getTimezoneOffset() / 60;\nconst byHour = {};\nfor (let h = 0; h < 24; h++) byHour[h] = [];\nconst profileSeries = profileRaw?.results?.[0]?.series?.[0]?.values ?? [];\nprofileSeries\n  .filter(([time]) => new Date(time).getDay() === targetWeekday)\n  .forEach(([time, kwh]) => {\n    const local = new Date(new Date(time).getTime() + offsetHours * 3600000);\n    const hour = local.getHours();\n    if (kwh !== null && kwh > 0) byHour[hour].push(kwh);\n  });\nconst profile = [];\nfor (let h = 0; h < 24; h++) {\n  const vals = byHour[h];\n  profile.push({ hour: h, avg_kwh: vals.length > 0 ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length*100)/100 : 0, samples: vals.length });\n}\nconst profileDays = Math.max(...profile.map(p => p.samples), 0);\nconst profileSection = profileDays >= 4\n  ? '\\n\\nStÃƒÂ¼ndliches Verbrauchsprofil (gleicher Wochentag, ' + profileDays + ' Messtage):\\n' +\n    profile.map(p => p.hour.toString().padStart(2,'0') + ':00: ' + p.avg_kwh + ' kWh').join(' | ') +\n    '\\n\\nStunden mit hohem Verbrauch einplanen.'\n  : '';\n\nconst prompt = 'Optimiere die Batterieladekosten fuer morgen.' +\n  '\\n\\nAktuelle Daten:' +\n  '\\nBatterie: SoC ' + soc + '%, verfuegbare Kapazitaet: ' + availableCapacity + ' kWh' +\n  '\\nSolar-Prognose morgen: ' + solarTomorrow + ' kWh' +\n  '\\nErwarteter Tagesverbrauch: ' + avgRounded + ' kWh (' + source + ', ' + dataDays + ' Messtage)' +\n  evSection +\n  '\\n\\nTibber-Preise morgen:\\n' + tariffStr +\n  profileSection +\n  '\\n\\nBerechne den optimalen Preisschwellwert:' +\n  '\\n- Energiebedarf = ' + avgRounded + ' - ' + solarTomorrow + ' (Solar) - ' + availableCapacity + ' (Batterie) kWh' +\n  '\\n- Wenn Bedarf <= 0: threshold_ct = 0 (Solar + Batterie reichen)' +\n  '\\n- Wenn Bedarf > 0: waehle guenstigste Tibber-Slots bis Bedarf gedeckt, Schwellwert = hoechster Slot-Preis x 1.05' +\n  '\\n- n8n setzt den Schwellwert Ã¢â‚¬â€œ mache KEINEN evcc-API-Aufruf' +\n  '\\n\\nAntworte NUR mit JSON: { \"threshold_ct\": <Zahl in ct/kWh>, \"reasoning\": \"<kurze Begruendung>\" }';\n\nreturn [{ json: { avg_consumption_kwh: avgRounded, data_days: dataDays, source, soc, solar_tomorrow_kwh: solarTomorrow, prompt } }];"
       },
       "id": "33f8f8af-40ea-43c2-aaf0-d5b5affae010",
       "name": "Verbrauch berechnen",
@@ -158,14 +158,14 @@
         0
       ],
       "typeVersion": 2,
-      "notes": "Berechnet Durchschnittsverbrauch: bevorzugt gleicher Wochentag (â‰¥2 Werte), sonst Gesamtdurchschnitt, sonst 10 kWh Fallback."
+      "notes": "Berechnet Durchschnittsverbrauch: bevorzugt gleicher Wochentag (Ã¢â€°Â¥2 Werte), sonst Gesamtdurchschnitt, sonst 10 kWh Fallback."
     },
     {
       "parameters": {
         "promptType": "define",
         "text": "={{ $json.prompt }}",
         "options": {
-          "systemMessage": "Du bist ein Energieoptimierungs-Agent fuer eine Hausbatterie.\nSpecs: 7,6 kWh Kapazitaet, max. 7 kW Ladeleistung, Einspeiseverguetung 6,7 ct/kWh.\nAlle Daten sind bereits im Prompt enthalten â€“ mache KEINE API-Aufrufe.\nn8n setzt den Schwellwert automatisch nach deiner Antwort.\nGib am Ende IMMER valides JSON zurueck: { \"threshold_ct\": <Zahl in ct/kWh>, \"reasoning\": \"<Text>\" }\nDas Haus hat eine Wallbox mit 2 E-Fahrzeugen. EV-Informationen sind wenn vorhanden bereits im Prompt enthalten."
+          "systemMessage": "Du bist ein Energieoptimierungs-Agent fuer eine Hausbatterie.\nSpecs: 7,6 kWh Kapazitaet, max. 7 kW Ladeleistung, Einspeiseverguetung 6,7 ct/kWh.\nAlle Daten sind bereits im Prompt enthalten Ã¢â‚¬â€œ mache KEINE API-Aufrufe.\nn8n setzt den Schwellwert automatisch nach deiner Antwort.\nGib am Ende IMMER valides JSON zurueck: { \"threshold_ct\": <Zahl in ct/kWh>, \"reasoning\": \"<Text>\" }\nDas Haus hat eine Wallbox mit 2 E-Fahrzeugen. EV-Informationen sind wenn vorhanden bereits im Prompt enthalten."
         }
       },
       "id": "dc15163c-265c-4a33-ae4e-2270dcb691d5",
@@ -201,14 +201,14 @@
       "credentials": {
         "anthropicApi": {
           "id": "zcVdqqwObP1JOxql",
-          "name": "Anthropic â€“ Claude Sonnet"
+          "name": "Anthropic Ã¢â‚¬â€œ Claude Sonnet"
         }
       },
       "notes": "Anthropic Credential muss gesetzt sein."
     },
     {
       "parameters": {
-        "jsCode": "// Alle mÃ¶glichen Pfade fÃ¼r die Claude-Antwort probieren\n  const item = $input.first() ?? $input.item;\n  const data = item?.json ?? {};\n\n  const response = data.output\n    ?? data.text\n    ?? data.message\n    ?? data.content\n    ?? JSON.stringify(data);\n\n  let threshold = null;\n  let reasoning = 'Keine BegrÃ¼ndung';\n\n  // Versuche JSON-Block zu extrahieren (letzten Block bevorzugen, keine verschachtelten Klammern)\n  const allMatches = [...String(response).matchAll(/\\{[^{}]*\"threshold_ct\"[^{}]*\\}/g)];\n  const jsonMatch = allMatches.length > 0 ? allMatches[allMatches.length - 1][0] : null;\n  if (jsonMatch) {\n    try {\n      const parsed = JSON.parse(jsonMatch);\n      threshold = parseFloat(parsed.threshold_ct);\n      reasoning = parsed.reasoning ?? reasoning;\n    } catch(e) {}\n  }\n\n  // Fallback: Zahl nach threshold_ct suchen\n  if (threshold === null) {\n    const numMatch = String(response).match(/threshold_ct[\"' ]*[:=][\"' ]*(\\d+\\.?\\d*)/);\n    if (numMatch) threshold = parseFloat(numMatch[1]);\n  }\n\n  // Wenn nichts gefunden: Debug-Info ausgeben statt crash\n  if (threshold === null || isNaN(threshold)) {\n    return [{ json: {\n      error: true,\n      debug_response: String(response).slice(0, 1000),\n      debug_keys: Object.keys(data).join(', ')\n    }}];\n  }\n\n  threshold = Math.min(50, Math.max(0, threshold));\n\n  return [{ json: {\n    threshold_ct: threshold,\n    reasoning,\n    timestamp: new Date().toISOString()\n  }}];"
+        "jsCode": "// Alle mÃƒÂ¶glichen Pfade fÃƒÂ¼r die Claude-Antwort probieren\n  const item = $input.first() ?? $input.item;\n  const data = item?.json ?? {};\n\n  const response = data.output\n    ?? data.text\n    ?? data.message\n    ?? data.content\n    ?? JSON.stringify(data);\n\n  let threshold = null;\n  let reasoning = 'Keine BegrÃƒÂ¼ndung';\n\n  // Versuche JSON-Block zu extrahieren (letzten Block bevorzugen, keine verschachtelten Klammern)\n  const allMatches = [...String(response).matchAll(/\\{[^{}]*\"threshold_ct\"[^{}]*\\}/g)];\n  const jsonMatch = allMatches.length > 0 ? allMatches[allMatches.length - 1][0] : null;\n  if (jsonMatch) {\n    try {\n      const parsed = JSON.parse(jsonMatch);\n      threshold = parseFloat(parsed.threshold_ct);\n      reasoning = parsed.reasoning ?? reasoning;\n    } catch(e) {}\n  }\n\n  // Fallback: Zahl nach threshold_ct suchen\n  if (threshold === null) {\n    const numMatch = String(response).match(/threshold_ct[\"' ]*[:=][\"' ]*(\\d+\\.?\\d*)/);\n    if (numMatch) threshold = parseFloat(numMatch[1]);\n  }\n\n  // Wenn nichts gefunden: Debug-Info ausgeben statt crash\n  if (threshold === null || isNaN(threshold)) {\n    return [{ json: {\n      error: true,\n      debug_response: String(response).slice(0, 1000),\n      debug_keys: Object.keys(data).join(', ')\n    }}];\n  }\n\n  threshold = Math.min(50, Math.max(0, threshold));\n\n  return [{ json: {\n    threshold_ct: threshold,\n    reasoning,\n    timestamp: new Date().toISOString()\n  }}];"
       },
       "id": "59deca75-b384-4ad5-8430-5eeb133a1951",
       "name": "Ergebnis extrahieren",
@@ -531,25 +531,25 @@
       "main": [
         [
           {
-            "node": "HA: KI-Schalter prÃ¼fen",
+            "node": "HA: KI-Schalter prÃƒÂ¼fen",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Trigger: tÃ¤glich 14:00": {
+    "Trigger: tÃƒÂ¤glich 14:00": {
       "main": [
         [
           {
-            "node": "HA: KI-Schalter prÃ¼fen",
+            "node": "HA: KI-Schalter prÃƒÂ¼fen",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "HA: KI-Schalter prÃ¼fen": {
+    "HA: KI-Schalter prÃƒÂ¼fen": {
       "main": [
         [
           {
@@ -757,7 +757,7 @@
       "main": [
         [
           {
-            "node": "HA: KI-Schalter prÃ¼fen",
+            "node": "HA: KI-Schalter prÃƒÂ¼fen",
             "type": "main",
             "index": 0
           }
