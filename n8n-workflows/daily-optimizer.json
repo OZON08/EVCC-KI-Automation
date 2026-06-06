@@ -7,13 +7,13 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 14 * * *"
+              "expression": "0 16 * * *"
             }
           ]
         }
       },
       "id": "d4e31765-e259-405e-ae16-16a7073864c7",
-      "name": "Trigger: täglich 14:00",
+      "name": "Trigger: täglich 16:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "position": [
         0,

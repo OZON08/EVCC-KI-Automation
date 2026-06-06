@@ -4,7 +4,7 @@ KI-gesteuertes System zur kostenoptimierten Ladung und Entladung der Hausbatteri
 
 ## Wie es funktioniert
 
-Täglich um 14:00 Uhr läuft der Daily Optimizer in n8n:
+Täglich um 16:00 Uhr läuft der Daily Optimizer in n8n:
 
 1. Liest den **gemessenen Durchschnittsverbrauch** und das **stündliche Lastprofil** aus InfluxDB (28 Tage, `homePower`)
 2. n8n holt via evcc REST API: aktuellen SoC, Tibber-Preise für morgen, Solar-Prognose, Wallbox-Status
@@ -35,7 +35,7 @@ Zusätzlich laufen:
 
 | Workflow | Trigger | Funktion |
 |----------|---------|---------|
-| Daily Optimizer | täglich 14:00 + sofort bei KI-Aktivierung + Webhook | Preisschwellwert für morgen per Claude berechnen |
+| Daily Optimizer | täglich 16:00 + sofort bei KI-Aktivierung + Webhook | Preisschwellwert für morgen per Claude berechnen |
 | Intraday Adjuster | stündlich 24/7 | Regelbasiert: Schwellwert prüfen, Einspeisung steuern, nächtliches Laden optimieren |
 | Savings Tracker | täglich 23:55 + Webhook | Ersparnis vs. Tagesdurchschnitt berechnen |
 | Safety Monitor | alle 15 Minuten | SoC-Grenzen überwachen |
@@ -60,8 +60,8 @@ Zusätzlich laufen:
 
 ```
 ├── n8n-workflows/
-│   ├── daily-optimizer.json         # Claude Sonnet (Single-Turn) + evcc REST + InfluxDB, täglich 14:00
-│   ├── intraday-adjuster.json       # Regelbasiert (kein LLM), stündlich 6–22 Uhr
+│   ├── daily-optimizer.json         # Claude Sonnet (Single-Turn) + evcc REST + InfluxDB, täglich 16:00
+│   ├── intraday-adjuster.json       # Regelbasiert (kein LLM), stündlich 24/7
 │   ├── savings-tracker.json         # Ersparnis-Berechnung, täglich 23:55
 │   ├── safety-monitor.json          # Regelbasiert, alle 15 min
 │   └── ha-override-handler.json     # Webhook-Handler, Sofortreaktion auf HA-Schalter
