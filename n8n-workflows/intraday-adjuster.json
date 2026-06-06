@@ -145,6 +145,29 @@
     },
     {
       "parameters": {
+        "url": "http://homeassistant:8123/api/states/input_number.einspeise_verguetung_ct",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "ha-einspeise-verguetung",
+      "name": "HA: Einspeise-Verguetung lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        672,
+        -480
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "HOwzYx39oHRQSvbp",
+          "name": "Home Assistant Token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
         "jsCode": "const d = $input.first()?.json ?? {};\nconst action = ['keep','update','remove'].includes(d.charge_action) ? d.charge_action : 'keep';\nconst dischargeAction = ['enable','disable'].includes(d.discharge_action) ? d.discharge_action : 'disable';\nconst threshold = Math.min(50, Math.max(0, parseFloat(d.threshold_ct ?? 0)));\nreturn [{ json: { action, charge_action: action, threshold_ct: threshold, discharge_action: dischargeAction, reasoning: d.reasoning ?? '', timestamp: d.timestamp ?? new Date().toISOString() } }];"
       },
       "id": "d0e1f2a3-b4c5-6789-3456-890123456789",
@@ -361,7 +384,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Eingangsdaten\nconst stateRaw = $('evcc: State abrufen').first()?.json ?? {};\nconst tariffRaw = $('evcc: Tarif abrufen').first()?.json ?? {};\nconst schwellwertStr = $('HA: Schwellwert lesen').first()?.json?.state ?? '0';\nconst einspeiseAktiv = $('HA: Einspeise-Schalter lesen').first()?.json?.state === 'on';\nconst minSoc = parseFloat($('HA: Min-SoC lesen').first()?.json?.state) || 30;\n\n// evcc State\nconst state = stateRaw?.result ?? stateRaw;\nconst soc = parseFloat(state?.batterySoc ?? 50);\nconst loadpoints = state?.loadpoints ?? [];\nconst evLaedt = loadpoints.some(lp => (lp.chargePower ?? 0) > 0);\n\n// Aktuellen Tibber-Preis ermitteln\nconst rates = tariffRaw?.result?.rates ?? tariffRaw?.rates ?? [];\nconst getPrice = r => r?.value ?? r?.price;\nconst toCt = r => { const p = getPrice(r); return (p !== undefined && p !== null && !isNaN(p)) ? Math.round(p * 10000) / 100 : null; };\nconst now = new Date();\nconst currentRate = rates.find(r => new Date(r.start) <= now && now < new Date(r.end));\nconst currentPriceCt = currentRate ? toCt(currentRate) : null;\n\n// Guenstigsten Preis naechste 2h\nconst in2h = new Date(now.getTime() + 2 * 3600000);\nconst upcoming = rates.filter(r => new Date(r.start) >= now && new Date(r.start) < in2h);\nconst upcomingPrices = upcoming.map(r => toCt(r)).filter(p => p !== null);\nconst minUpcomingCt = upcomingPrices.length > 0 ? Math.min(...upcomingPrices) : null;\n\nconst schwellwert = parseFloat(schwellwertStr);\nconst schwellwertVerfuegbar = !isNaN(schwellwert);\nconst EINSPEISE_CT = 6.7;\n\n// charge_action – nur wenn Schwellwert verfuegbar, sonst keep (kein fruehzeitiger Abbruch)\nlet chargeAction = 'keep';\nlet thresholdCt = schwellwertVerfuegbar ? schwellwert : 0;\n\nif (!schwellwertVerfuegbar) {\n  chargeAction = 'keep';\n} else if (schwellwert === 0) {\n  chargeAction = 'remove'; thresholdCt = 0;\n} else if (currentPriceCt !== null && currentPriceCt <= schwellwert) {\n  chargeAction = 'update';\n} else if (currentPriceCt !== null && currentPriceCt > schwellwert) {\n  const cheapSoon = minUpcomingCt !== null && minUpcomingCt <= schwellwert;\n  chargeAction = cheapSoon ? 'keep' : 'remove';\n  if (chargeAction === 'remove') thresholdCt = 0;\n}\n\n// discharge_action – unabhaengig vom Ladeschwellenwert\nlet dischargeAction = 'disable';\nlet dischargeReason = '';\n\nif (evLaedt) {\n  dischargeReason = 'EV laedt aktiv';\n} else if (!einspeiseAktiv) {\n  dischargeReason = 'Einspeise-Logik aus';\n} else if (soc < minSoc) {\n  dischargeReason = `SoC ${soc}% < Min ${minSoc}%`;\n} else if (currentPriceCt === null || currentPriceCt > EINSPEISE_CT) {\n  dischargeAction = 'enable';\n  dischargeReason = currentPriceCt === null ? 'Preis unbekannt – Entladung erlaubt (kein Tibber-Slot gefunden)' : `Preis ${currentPriceCt}ct > ${EINSPEISE_CT}ct`;\n} else {\n  dischargeReason = `Preis ${currentPriceCt}ct <= ${EINSPEISE_CT}ct`;\n}\n\nconst schwellwertHinweis = schwellwertVerfuegbar ? `Schwellwert: ${schwellwert}ct` : 'Schwellwert: n/v (Daily Optimizer noch nicht gelaufen)';\nconst reasoning = `Preis: ${currentPriceCt ?? '?'}ct | ${schwellwertHinweis} -> ${chargeAction}; SoC: ${soc}% | ${dischargeReason} -> discharge ${dischargeAction}`;\n\nreturn [{ json: { charge_action: chargeAction, threshold_ct: thresholdCt, discharge_action: dischargeAction, reasoning, timestamp: new Date().toISOString() } }];"
+        "jsCode": "// Eingangsdaten\nconst stateRaw = $('evcc: State abrufen').first()?.json ?? {};\nconst tariffRaw = $('evcc: Tarif abrufen').first()?.json ?? {};\nconst schwellwertStr = $('HA: Schwellwert lesen').first()?.json?.state ?? '0';\nconst einspeiseAktiv = $('HA: Einspeise-Schalter lesen').first()?.json?.state === 'on';\nconst minSoc = parseFloat($('HA: Min-SoC lesen').first()?.json?.state) || 30;\n\n// evcc State\nconst state = stateRaw?.result ?? stateRaw;\nconst soc = parseFloat(state?.batterySoc ?? 50);\nconst loadpoints = state?.loadpoints ?? [];\nconst evLaedt = loadpoints.some(lp => (lp.chargePower ?? 0) > 0);\n\n// Aktuellen Tibber-Preis ermitteln\nconst rates = tariffRaw?.result?.rates ?? tariffRaw?.rates ?? [];\nconst getPrice = r => r?.value ?? r?.price;\nconst toCt = r => { const p = getPrice(r); return (p !== undefined && p !== null && !isNaN(p)) ? Math.round(p * 10000) / 100 : null; };\nconst now = new Date();\nconst currentRate = rates.find(r => new Date(r.start) <= now && now < new Date(r.end));\nconst currentPriceCt = currentRate ? toCt(currentRate) : null;\n\n// Guenstigsten Preis naechste 2h\nconst in2h = new Date(now.getTime() + 2 * 3600000);\nconst upcoming = rates.filter(r => new Date(r.start) >= now && new Date(r.start) < in2h);\nconst upcomingPrices = upcoming.map(r => toCt(r)).filter(p => p !== null);\nconst minUpcomingCt = upcomingPrices.length > 0 ? Math.min(...upcomingPrices) : null;\n\nconst schwellwert = parseFloat(schwellwertStr);\nconst schwellwertVerfuegbar = !isNaN(schwellwert);\nconst EINSPEISE_CT = parseFloat($('HA: Einspeise-Verguetung lesen').first()?.json?.state) || 6.7;\n\n// charge_action – nur wenn Schwellwert verfuegbar, sonst keep (kein fruehzeitiger Abbruch)\nlet chargeAction = 'keep';\nlet thresholdCt = schwellwertVerfuegbar ? schwellwert : 0;\n\nif (!schwellwertVerfuegbar) {\n  chargeAction = 'keep';\n} else if (schwellwert === 0) {\n  chargeAction = 'remove'; thresholdCt = 0;\n} else if (currentPriceCt !== null && currentPriceCt <= schwellwert) {\n  chargeAction = 'update';\n} else if (currentPriceCt !== null && currentPriceCt > schwellwert) {\n  const cheapSoon = minUpcomingCt !== null && minUpcomingCt <= schwellwert;\n  chargeAction = cheapSoon ? 'keep' : 'remove';\n  if (chargeAction === 'remove') thresholdCt = 0;\n}\n\n// discharge_action – unabhaengig vom Ladeschwellenwert\nlet dischargeAction = 'disable';\nlet dischargeReason = '';\n\nif (evLaedt) {\n  dischargeReason = 'EV laedt aktiv';\n} else if (!einspeiseAktiv) {\n  dischargeReason = 'Einspeise-Logik aus';\n} else if (soc < minSoc) {\n  dischargeReason = `SoC ${soc}% < Min ${minSoc}%`;\n} else if (currentPriceCt === null || currentPriceCt > EINSPEISE_CT) {\n  dischargeAction = 'enable';\n  dischargeReason = currentPriceCt === null ? 'Preis unbekannt – Entladung erlaubt (kein Tibber-Slot gefunden)' : `Preis ${currentPriceCt}ct > ${EINSPEISE_CT}ct`;\n} else {\n  dischargeReason = `Preis ${currentPriceCt}ct <= ${EINSPEISE_CT}ct`;\n}\n\nconst schwellwertHinweis = schwellwertVerfuegbar ? `Schwellwert: ${schwellwert}ct` : 'Schwellwert: n/v (Daily Optimizer noch nicht gelaufen)';\nconst reasoning = `Preis: ${currentPriceCt ?? '?'}ct | ${schwellwertHinweis} -> ${chargeAction}; SoC: ${soc}% | ${dischargeReason} -> discharge ${dischargeAction}`;\n\nreturn [{ json: { charge_action: chargeAction, threshold_ct: thresholdCt, discharge_action: dischargeAction, reasoning, timestamp: new Date().toISOString() } }];"
       },
       "id": "entscheidung-berechnen",
       "name": "Entscheidung berechnen",
@@ -508,6 +531,17 @@
       ]
     },
     "HA: Min-SoC lesen": {
+      "main": [
+        [
+          {
+            "node": "HA: Einspeise-Verguetung lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HA: Einspeise-Verguetung lesen": {
       "main": [
         [
           {
