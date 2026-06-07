@@ -70,7 +70,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const stateRaw = $('evcc: State abrufen').first()?.json ?? {};\nconst evccState = stateRaw?.result ?? stateRaw;\nconst evopt = evccState?.evopt ?? null;\n\nconst haState = $('HA: Schwellwert lesen').first()?.json ?? {};\nconst thresholdCt = parseFloat(haState?.state ?? 0);\nconst reasoningOriginal = haState?.attributes?.reasoning ?? '(keine Begründung)';\n\nif (!evopt?.res) {\n  return [{ json: {\n    evopt_available: false,\n    threshold_ct: thresholdCt,\n    reasoning_original: reasoningOriginal\n  }}];\n}\n\nconst batteries = evopt.res?.batteries ?? [];\nconst bat0 = batteries[0] ?? {};\nconst chargingPower = bat0?.charging_power ?? [];\nconst socArr = bat0?.state_of_charge ?? [];\nconst timestamps = evopt.details?.timestamp ?? [];\nconst pricesPN = evopt.req?.time_series?.PN ?? [];\n\nconst chargeSlots = chargingPower\n  .map((power, i) => ({ power, ts: timestamps[i], pn: pricesPN[i] ?? 0 }))\n  .filter(s => s.power > 100 && s.ts != null);\n\nconst chargeWindows = chargeSlots.map(s => {\n  const d = new Date(s.ts);\n  const time = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');\n  const priceCt = Math.round(s.pn * 1000000) / 10;\n  return `${time} (${priceCt} ct)`;\n}).join(' | ');\n\nconst maxChargePriceCt = chargeSlots.length > 0\n  ? Math.round(Math.max(...chargeSlots.map(s => s.pn * 1000000)) / 10) / 10\n  : null;\n\nconst savings = Math.round(-(evopt.res?.objective_value ?? 0) * 100) / 100;\n\nconst toPct = wh => Math.round(wh / 7600 * 100);\nconst minSoc = socArr.length > 0 ? toPct(Math.min(...socArr)) : 0;\nconst maxSocVal = socArr.length > 0 ? toPct(Math.max(...socArr)) : 0;\nconst endSoc = socArr.length > 0 ? toPct(socArr[socArr.length - 1]) : 0;\n\nconst prompt = `Gesetzter Schwellwert: ${thresholdCt} ct/kWh\\nBatterie: 7,6 kWh, Einspeisevergütung 6,7 ct/kWh\\n\\nevcc Optimizer-Plan:\\n  Ladefenster: ${chargeWindows || 'keine (kein Netzladen geplant)'}\\n  Ladeslots (15-min): ${chargeSlots.length}\\n  Höchster Ladepreis: ${maxChargePriceCt !== null ? maxChargePriceCt + ' ct/kWh' : 'n/a'}\\n  Geplante Kosteneinsparung: ${savings} €\\n  SoC-Verlauf: min ${minSoc}%, max ${maxSocVal}%, Ende ${endSoc}%\\n\\nValidiere ob der Plan konsistent mit dem Schwellwert ist:\\n- Ladeslots vorhanden: Weicht der höchste Ladepreis stark vom Schwellwert ab (>3 ct)?\\n  Wenn ja: neuen Schwellwert empfehlen (= höchster_ladepreis + 1 ct Puffer)\\n- Keine Ladeslots: Ist das plausibel (SoC hoch oder Solar ausreichend)? Dann status ok.\\n\\nAntworte NUR mit validem JSON:\\n{\"status\": \"ok\" oder \"adjusted\", \"new_threshold_ct\": <nur wenn adjusted>, \"deviation_ct\": <Differenz in ct>, \"explanation\": \"<Erklärung DE>\"}`;\n\nreturn [{ json: {\n  evopt_available: true,\n  threshold_ct: thresholdCt,\n  reasoning_original: reasoningOriginal,\n  charge_windows: chargeWindows || 'keine',\n  n_slots: chargeSlots.length,\n  max_charge_price_ct: maxChargePriceCt,\n  savings_eur: savings,\n  soc_min: minSoc,\n  soc_max: maxSocVal,\n  soc_end: endSoc,\n  prompt\n}}];"
+        "jsCode": "const stateRaw = $('evcc: State abrufen').first()?.json ?? {};\nconst evccState = stateRaw?.result ?? stateRaw;\nconst evopt = evccState?.evopt ?? null;\n\nconst haState = $('HA: Schwellwert lesen').first()?.json ?? {};\nconst thresholdCt = parseFloat(haState?.state ?? 0);\nconst reasoningOriginal = haState?.attributes?.reasoning ?? '(keine Begründung)';\n\nif (!evopt?.res) {\n  return [{ json: {\n    evopt_available: false,\n    threshold_ct: thresholdCt,\n    reasoning_original: reasoningOriginal\n  }}];\n}\n\nconst batteries = evopt.res?.batteries ?? [];\nconst batteryDetails = evopt.details?.batteryDetails ?? [];\nconst homeBatIdx = batteryDetails.findIndex(d => d.type === 'battery');\nconst bat0 = batteries[homeBatIdx >= 0 ? homeBatIdx : 0] ?? {};\nconst chargingPower = bat0?.charging_power ?? [];\nconst socArr = bat0?.state_of_charge ?? [];\nconst timestamps = evopt.details?.timestamp ?? [];\nconst pricesPN = evopt.req?.time_series?.PN ?? [];\n\nconst chargeSlots = chargingPower\n  .map((power, i) => ({ power, ts: timestamps[i], pn: pricesPN[i] ?? 0 }))\n  .filter(s => s.power > 100 && s.ts != null);\n\nconst chargeWindows = chargeSlots.map(s => {\n  const d = new Date(s.ts);\n  const time = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');\n  const priceCt = Math.round(s.pn * 1000000) / 10;\n  return `${time} (${priceCt} ct)`;\n}).join(' | ');\n\nconst maxChargePriceCt = chargeSlots.length > 0\n  ? Math.round(Math.max(...chargeSlots.map(s => s.pn * 1000000)) / 10) / 10\n  : null;\n\nconst savings = Math.round(-(evopt.res?.objective_value ?? 0) * 100) / 100;\n\nconst toPct = wh => Math.round(wh / 7600 * 100);\nconst minSoc = socArr.length > 0 ? toPct(Math.min(...socArr)) : 0;\nconst maxSocVal = socArr.length > 0 ? toPct(Math.max(...socArr)) : 0;\nconst endSoc = socArr.length > 0 ? toPct(socArr[socArr.length - 1]) : 0;\n\nconst isSolarOnly = chargeSlots.length > 0 && maxChargePriceCt !== null && maxChargePriceCt <= 0.1;\n\nconst prompt = `Gesetzter Schwellwert: ${thresholdCt} ct/kWh\\nBatterie: 7,6 kWh, Einspeisevergütung 6,7 ct/kWh\\n\\nevcc Optimizer-Plan:\\n  Ladefenster: ${chargeWindows || 'keine (kein Netzladen geplant)'}\\n  Ladeslots (15-min): ${chargeSlots.length}\\n  Höchster Ladepreis: ${maxChargePriceCt !== null ? maxChargePriceCt + ' ct/kWh' : 'n/a'}\\n  Geplante Kosteneinsparung: ${savings > 0 ? savings + ' €' : 'n/a'}\\n  SoC-Verlauf: min ${minSoc}%, max ${maxSocVal}%, Ende ${endSoc}%\\n${isSolarOnly ? '\\nHINWEIS: Alle Ladeslots zeigen 0 ct – das bedeutet Solar-Laden (kein Netzimport). Der batterygridchargelimit-Schwellwert betrifft NUR Netzladen und soll in diesem Fall NICHT geändert werden. Setze status: \\\"ok\\\".\\n' : ''}\\nValidiere ob der Plan konsistent mit dem Schwellwert ist:\\n- Ladeslots vorhanden und Preise > 0: Weicht der höchste Ladepreis stark vom Schwellwert ab (>3 ct)?\\n  Wenn ja: neuen Schwellwert empfehlen (= höchster_ladepreis + 1 ct Puffer)\\n- Keine Ladeslots oder Solar-Only (0 ct): status ok, Schwellwert unverändet lassen.\\n\\nAntworte NUR mit validem JSON:\\n{\\\"status\\\": \\\"ok\\\" oder \\\"adjusted\\\", \\\"new_threshold_ct\\\": <nur wenn adjusted und Preis > 0>, \\\"deviation_ct\\\": <Differenz in ct>, \\\"explanation\\\": \\\"<Erklärung DE>\\\"}`;\n\nreturn [{ json: {\n  evopt_available: true,\n  threshold_ct: thresholdCt,\n  reasoning_original: reasoningOriginal,\n  charge_windows: chargeWindows || 'keine',\n  n_slots: chargeSlots.length,\n  max_charge_price_ct: maxChargePriceCt,\n  savings_eur: Math.max(0, savings),\n  soc_min: minSoc,\n  soc_max: maxSocVal,\n  soc_end: endSoc,\n  prompt\n}}];"
       },
       "id": "validator-data-prepare",
       "name": "Daten aufbereiten",
@@ -276,6 +276,53 @@
           "name": "Home Assistant Token"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "const usage = $('Claude: Plan validieren').first()?.json?.tokenUsage ?? {};\nconst inputTokens = usage.inputTokens ?? usage.prompt_tokens ?? 500;\nconst outputTokens = usage.outputTokens ?? usage.completion_tokens ?? 150;\nconst cost_usd = (inputTokens / 1000000 * 3) + (outputTokens / 1000000 * 15);\nconst costRounded = Math.round(cost_usd * 100000) / 100000;\nreturn [{ json: {\n  workflow: 'validator',\n  input_tokens: inputTokens,\n  output_tokens: outputTokens,\n  cost_usd: costRounded,\n  line_protocol: 'ai_costs,workflow=validator input_tokens=' + inputTokens + 'i,output_tokens=' + outputTokens + 'i,cost_usd=' + costRounded\n}}];"
+      },
+      "id": "validator-token-calc",
+      "name": "Token: Kosten berechnen",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        2160,
+        80
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://a0d7b954-influxdb:8086/write?db=evcc",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "text/plain",
+        "body": "={{ $json.line_protocol }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "validator-influxdb-write",
+      "name": "InfluxDB: Token-Kosten schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        2400,
+        80
+      ],
+      "typeVersion": 4.4,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "r61FJRKq9t50s9A7",
+          "name": "InfluxDB evcc"
+        }
+      }
     }
   ],
   "connections": {
@@ -408,6 +455,28 @@
         [
           {
             "node": "HA: Sensor aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HA: Sensor aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "Token: Kosten berechnen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Token: Kosten berechnen": {
+      "main": [
+        [
+          {
+            "node": "InfluxDB: Token-Kosten schreiben",
             "type": "main",
             "index": 0
           }
