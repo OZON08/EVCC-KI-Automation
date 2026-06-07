@@ -12,6 +12,7 @@ Täglich um 16:00 Uhr läuft der Daily Optimizer in n8n:
 4. n8n setzt den Schwellwert direkt in evcc per REST API
 5. evcc lädt die Batterie automatisch wenn der Tibber-Preis unter dem Schwellwert liegt
 6. n8n schreibt Ergebnis + Begründung nach Home Assistant
+7. Um 16:20 validiert der **Optimizer Validator**: liest den MILP-Plan von evcc (`evopt`), Claude prüft ob der Schwellwert zum Plan passt – bei >3 ct Abweichung wird automatisch korrigiert
 
 Zusätzlich laufen:
 - **Intraday Adjuster** (stündlich 24/7): regelbasiert, passt Schwellwert anhand aktuellem Tibber-Preis vs. Daily-Schwellwert an, steuert Netzeinspeisung – auch nachts für günstige Ladezeiten
@@ -24,7 +25,8 @@ Zusätzlich laufen:
 | Komponente | Rolle | Adresse |
 |------------|-------|---------|
 | **n8n** | Orchestrator (läuft als HA-Addon) | `http://homeassistant:8081` (intern) |
-| **Claude Sonnet** (`claude-sonnet-4-6`) | Tagesplanung (1× täglich, Single-Turn) | Anthropic API |
+| **Claude Sonnet** (`claude-sonnet-4-6`) | Tagesplanung + Validierung (2× täglich) | Anthropic API |
+| **evcc-io/optimizer** | MILP-Ladeplanung (läuft als HA-Addon) | via evcc `evopt`-State |
 | **evcc** | Batteriesteuerung via REST API | `http://<EVCC_IP>:7070` |
 | **RCT Power** | Hausbatterie (7,6 kWh, ~7 kW) | via evcc |
 | **Tibber** | Dynamische Strompreise (15-min-Raster) | via evcc `tariff/grid` |
@@ -51,6 +53,7 @@ Zusätzlich laufen:
 | EV/Wallbox-Bewusstsein | Fahrzeug-Ladestand und -plan fließen in Claude-Entscheidung ein; Einspeisung pausiert wenn EV lädt |
 | Einspeise-Logik | Batterie ins Netz entladen wenn Preis > 6,7 ct/kWh und SoC ausreichend |
 | Lastmustererkennung | Stündliches Verbrauchsprofil (28d, gleicher Wochentag) als Claude-Kontext |
+| evopt-Validierung | Optimizer Validator liest MILP-Plan aus evcc, Claude prüft Konsistenz mit Schwellwert, Auto-Korrektur bei >3 ct |
 | Token-Tracking | API-Kosten pro Lauf in InfluxDB, täglich/monatlich aggregiert in HA |
 | Ersparnis-Tracking | Tägliche Kosteneinsparung vs. Tagesdurchschnittspreis in HA |
 | Frequenz-Kontrolle | Intraday-Häufigkeit per HA-Dropdown einstellbar (1h / 2h / 3h / 6h) |
