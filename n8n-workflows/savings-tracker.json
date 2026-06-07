@@ -230,7 +230,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "text/plain",
-        "body": "={{ $json.line_protocol }}",
+        "body": "={{ $('Ersparnis berechnen').first().json.line_protocol }}",
         "options": {
           "response": {
             "response": {
