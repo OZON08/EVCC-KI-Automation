@@ -115,8 +115,9 @@ Zusätzlich laufen:
 
 ### Voraussetzungen
 
-- Home Assistant mit installierten Add-ons: **n8n**, **InfluxDB**
+- Home Assistant mit installierten Add-ons: **n8n**, **InfluxDB**, **evcc-io/optimizer**
 - **evcc** im lokalen Netz mit Tibber-Integration und RCT Power Anbindung
+- **evcc-io/optimizer** als HA Add-on installiert und in evcc als Optimizer-URL hinterlegt (in `evcc.yaml`: `optimizer: http://<OPTIMIZER_ADDON_IP>:<PORT>`)
 - **Anthropic API Key** (console.anthropic.com)
 - evcc schreibt Messdaten nach InfluxDB (Datenbank: `evcc`, User: `evcc`)
 
@@ -188,8 +189,9 @@ Für jeden Workflow in `n8n-workflows/`:
 1. `safety-monitor.json`
 2. `ha-override-handler.json`
 3. `daily-optimizer.json`
-4. `intraday-adjuster.json`
-5. `savings-tracker.json`
+4. `optimizer-validator.json`
+5. `intraday-adjuster.json`
+6. `savings-tracker.json`
 
 ---
 
@@ -200,8 +202,9 @@ Jeden Workflow aktivieren (Toggle oben rechts in n8n). Empfohlene Reihenfolge:
 1. Safety Monitor aktivieren
 2. HA Override Handler aktivieren
 3. Daily Optimizer aktivieren → **manuell triggern** um ersten Schwellwert zu setzen
-4. Intraday Adjuster aktivieren
-5. Savings Tracker aktivieren
+4. Optimizer Validator aktivieren (läuft automatisch 20 Min nach Daily Optimizer)
+5. Intraday Adjuster aktivieren
+6. Savings Tracker aktivieren
 
 **Erster Test:**
 - Daily Optimizer manuell triggern → in HA prüfen ob `sensor.battery_charge_threshold` einen Wert hat
