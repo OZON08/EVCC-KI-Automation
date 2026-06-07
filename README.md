@@ -36,6 +36,7 @@ Zusätzlich laufen:
 | Workflow | Trigger | Funktion |
 |----------|---------|---------|
 | Daily Optimizer | täglich 16:00 + sofort bei KI-Aktivierung + Webhook | Preisschwellwert für morgen per Claude berechnen |
+| Optimizer Validator | täglich 16:20 | evopt-Plan aus evcc lesen, Claude validiert Schwellwert, Auto-Korrektur bei >3 ct Abweichung |
 | Intraday Adjuster | stündlich 24/7 | Regelbasiert: Schwellwert prüfen, Einspeisung steuern, nächtliches Laden optimieren |
 | Savings Tracker | täglich 23:55 + Webhook | Ersparnis vs. Tagesdurchschnitt berechnen |
 | Safety Monitor | alle 15 Minuten | SoC-Grenzen überwachen |
@@ -61,6 +62,7 @@ Zusätzlich laufen:
 ```
 ├── n8n-workflows/
 │   ├── daily-optimizer.json         # Claude Sonnet (Single-Turn) + evcc REST + InfluxDB, täglich 16:00
+│   ├── optimizer-validator.json     # Claude validiert evopt-Plan vs. Schwellwert, täglich 16:20
 │   ├── intraday-adjuster.json       # Regelbasiert (kein LLM), stündlich 24/7
 │   ├── savings-tracker.json         # Ersparnis-Berechnung, täglich 23:55
 │   ├── safety-monitor.json          # Regelbasiert, alle 15 min
