@@ -253,11 +253,12 @@ charge_action:
   Preis > Schwellwert, kein günstiger Slot → remove
 
 discharge_action:
-  EV lädt aktiv                            → disable (Priorität EV)
-  Einspeise-Logik aus                      → disable
-  SoC < Min-SoC                            → disable
-  Preis > 6,7 ct/kWh                       → enable
-  sonst                                    → disable
+  EV lädt aktiv (charging=true od. >50 W) → disable (Priorität EV)
+  EV eingesteckt, nicht ladend            → Preis-/SoC-Logik (wie kein EV)
+  Einspeise-Logik aus                     → disable
+  SoC < Min-SoC                           → disable
+  Preis > 6,7 ct/kWh                      → enable
+  sonst                                   → disable
 ```
 
 ### HA Override Handler – Events
