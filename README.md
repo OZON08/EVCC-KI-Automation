@@ -253,12 +253,14 @@ charge_action:
   Preis > Schwellwert, kein günstiger Slot → remove
 
 discharge_action:
-  EV lädt aktiv (charging=true od. >50 W) → disable (Priorität EV)
-  EV eingesteckt, nicht ladend            → Preis-/SoC-Logik (wie kein EV)
+  SoC ungültig (Datenlücke)               → disable (keine Aktion, evcc entscheidet)
   Einspeise-Logik aus                     → disable
   SoC < Min-SoC                           → disable
-  Preis > 6,7 ct/kWh                      → enable
+  Preis > 6,7 ct/kWh                      → enable  (auch wenn EV lädt – Batterie
+                                             versorgt dann Haus/EV mit)
   sonst                                   → disable
+  Hinweis: EV-Ladestatus sperrt die Batterie nicht mehr pauschal. Bei hohem Preis
+  entlädt die Batterie unabhängig davon, ob das EV gerade lädt oder nicht.
 ```
 
 ### HA Override Handler – Events
